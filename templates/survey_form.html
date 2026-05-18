@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>📋 Survey — {{ kantor_label }}</title>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:#f1f5f9; font-family:system-ui,-apple-system,sans-serif; padding-bottom:80px; }
+.top-bar { background:#0f172a; color:#e2e8f0; padding:.7rem 1rem; display:flex; justify-content:space-between; align-items:center; font-size:.85rem; position:sticky; top:0; z-index:100; }
+.nav-link { color:#93c5fd; text-decoration:none; font-size:.8rem; padding:.25rem .5rem; border-radius:4px; }
+.nav-link:hover { background:rgba(255,255,255,.1); color:#fff; }
+.section-header { padding:.6rem 1rem; font-weight:700; font-size:.9rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; border-bottom:2px solid; }
+.section-header .toggle { font-size:.7rem; color:#6b7280; }
+.section-collapsed .item { display:none; }
+.section-collapsed .section-header .toggle::after { content:'\25B6'; }
+.section-header .toggle::after { content:'\25BC'; }
+.item { background:white; margin:0 0 1px; padding:.6rem 1rem; transition:background .15s; }
+.item-label { font-size:.82rem; font-weight:500; line-height:1.4; }
+.item-tip { font-size:.72rem; color:#6b7280; margin-top:2px; }
+.item-weight { font-size:.65rem; color:#9ca3af; }
+.item-tip { background:#f3f4f6; padding:6px 8px; border-radius:6px; margin-top:4px; line-height:1.4; }
+.helper-foto-status { font-size:.72rem; margin:3px 0; min-height:1rem; color:#6b7280; }
+.item-options { display:flex; gap:.35rem; margin:.35rem 0; flex-wrap:wrap; }
+.item-options button { padding:3px 10px; border:1.5px solid #d1d5db; border-radius:14px; background:white; font-size:.72rem; cursor:pointer; transition:all .15s; color:#374151; line-height:1.3; text-align:left; white-space:nowrap; max-width:100%; }
+.item-options button:hover { border-color:#2563eb; background:#eff6ff; }
+.item-options button.selected { color:white; border-color:transparent; }
+/* Warna berdasarkan score — 0=hijau, 1=kuning, 2=oranye, 3=merah, 4=abu */
+.item-options button.score-0.selected { background:#16a34a; }
+.item-options button.score-1.selected { background:#ca8a04; }
+.item-options button.score-2.selected { background:#ea580c; }
+.item-options button.score-3.selected { background:#dc2626; }
+.item-options button.score-4.selected { background:#6b7280; }
+.item-options button.score-0 { border-color:#86efac; }
+.item-options button.score-1 { border-color:#fcd34d; }
+.item-options button.score-2 { border-color:#fdba74; }
+.item-options button.score-3 { border-color:#fca5a5; }
+.item-options button.score-4 { border-color:#e5e7eb; }
+.photo-wrapper { display:flex; align-items:center; gap:.4rem; margin:.3rem 0; flex-wrap:wrap; }
+.photo-wrapper input[type="file"] { font-size:.7rem; }
+.photo-wrapper .photo-preview { width:50px; height:50px; object-fit:cover; border-radius:6px; border:1px solid #e5e7eb; }
+.note-input { width:100%; border:1px solid #e5e7eb; border-radius:6px; padding:.4rem .5rem; font-size:.75rem; resize:vertical; min-height:32px; margin-top:.25rem; }
+.submit-bar { position:fixed; bottom:0; left:0; right:0; background:white; border-top:1px solid #e2e8f0; padding:.6rem 1rem; display:flex; justify-content:space-between; align-items:center; box-shadow:0 -2px 8px rgba(0,0,0,.06); z-index:200; }
+.submit-bar .summary-text { font-size:.75rem; color:#6b7280; }
+.btn-primary { background:#2563eb; color:white; border:none; padding:.55rem 1.25rem; border-radius:8px; font-size:.82rem; font-weight:600; cursor:pointer; }
+.btn-primary:disabled { opacity:.5; cursor:not-allowed; }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <div style="display:flex;align-items:center;gap:1rem">
+    <strong>📋 Survey Kondisi Kantor</strong>
+    {% for m in menu_items %}
+    <a href="{{ m.url }}" class="nav-link">{{ m.icon }} {{ m.label }}</a>
+    {% endfor %}
+  </div>
+  <div style="display:flex;align-items:center;gap:.8rem">
+    <span style="font-size:.8rem;color:#93c5fd">👤 {{ user_name }}</span>
+    <a href="/api/logout" class="nav-link" style="color:#fca5a5">Keluar</a>
+  </div>
+</div>
+
+<!-- Info card -->
+<div style="margin:8px 12px;background:white;border-radius:12px;padding:10px 14px;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;align-items:center;gap:12px;font-size:.8rem;flex-wrap:wrap;">
+  <span>🏢 <strong>{{ kantor_label }}</strong> ({{ kantor_code }})</span>
+  <span>👤 {{ user_name }}</span>
+  <span>📅 {{ today_str }}</span>
+</div>
+
+<!-- Status banner -->
+{% if lock_expired %}
+<div style="margin:0 12px 8px;padding:10px 14px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;font-size:.78rem;color:#9a3412;">
+  <strong>⏰ Lock expired</strong><br>
+  <span style="font-size:.72rem;">Draft oleh {{ existing_pic }} sudah lebih dari 30 menit tidak diupdate. Kamu bisa mengambil alih dan melanjutkan.</span>
+</div>
+{% elif conflict_mode %}
+<div style="margin:0 12px 8px;padding:10px 14px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;font-size:.78rem;color:#9a3412;">
+  <strong>🔒 Sedang digarap oleh {{ existing_pic }}</strong><br>
+  <span style="font-size:.72rem;">Kantor ini sedang dikerjakan oleh {{ existing_pic }}. Kamu bisa melihat, tapi tidak bisa mengedit.</span>
+</div>
+{% elif is_submitted %}
+<div style="margin:0 12px 8px;padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;font-size:.78rem;color:#166534;">
+  <strong>✅ Survey sudah selesai (submitted)</strong><br>
+  <span style="font-size:.72rem;">Hasil survei kantor ini sudah disubmit dan tidak bisa diubah. Hubungi admin jika perlu revisi.</span>
+</div>
+{% elif is_draft %}
+<div style="margin:0 12px 8px;padding:10px 14px;background:#fefce8;border:1px solid #fef08a;border-radius:10px;font-size:.78rem;color:#854d0e;">
+  <strong>✏️ Draft — melanjutkan survei</strong><br>
+  <span style="font-size:.72rem;">Ada draft yang belum selesai. Isian yang sudah ada akan dimuat otomatis.</span>
+</div>
+{% endif %}
+
+{% if same_user and not is_submitted %}
+<script>
+  // Notifikasi kalo user yang sama buka dari session/tab lain
+  (function(){
+    var notified = sessionStorage.getItem('survey_reload_notified_' + '{{ kantor_code }}');
+    if (!notified) {
+      sessionStorage.setItem('survey_reload_notified_' + '{{ kantor_code }}', '1');
+      console.log('📋 Survey ' + '{{ kantor_code }}' + ' dimuat ulang (session sama)');
+    }
+  })();
+</script>
+{% endif %}
+
+{% set readonly_mode = conflict_mode or is_submitted %}
+{% set lock_expired = lock_expired_mode|default(false) %}
+{% set workflow_status_server = workflow_status|default('') %}
+{% set same_user = (workflow_status == 'draft') and (existing_pic == user_name) %}
+<!-- Form items — server-side rendered -->
+<form id="checklist-form">
+{% set cat_order = ['A','B','C','D','E','F','G'] %}
+{% set cat_names = {'A':'Lokasi & Akses','B':'Identitas & Visibilitas','C':'Ruang Konsumen','D':'Fasilitas Karyawan','E':'Alat Kerja','F':'Keamanan & Barang Sitaan','G':'Dokumen & Regulasi'} %}
+{% set cat_colors = {'A':'#3b82f6','B':'#ec4899','C':'#10b981','D':'#f59e0b','E':'#8b5cf6','F':'#ef4444','G':'#14b8a6'} %}
+
+{% for cat in cat_order %}
+{% set c_items = items | selectattr('cat','equalto',cat) | list %}
+{% if c_items %}
+{% set cat_color = cat_colors.get(cat,'#6b7280') %}
+<div style="margin:6px 0;background:white;border-radius:8px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.06)">
+<div class="section-header" style="color:{{ cat_color }};border-bottom-color:{{ cat_color }}">
+  <span>{{ cat }}. {{ cat_names.get(cat,cat) }}</span>
+  <span class="cat-progress" id="cat-progress-{{ cat }}" style="font-size:.7rem;color:#6b7280;font-weight:400;margin-left:auto;margin-right:6px;">0/{{ c_items|length }}</span>
+  <span class="toggle"></span>
+</div>
+{% for it in c_items %}
+{% set idx = it.idx %}
+{% set item_num = loop.index %}
+<div class="item" data-idx="{{ idx }}" data-item-label="{{ cat }}.{{ item_num }}">
+<div class="item-label">{{ item_num }}. {{ it.label }}</div>
+    <div class="item-tip" style="background:#f3f4f6;padding:6px 8px;border-radius:6px;margin-top:4px;line-height:1.4;color:#4b5563;">{{ it.tip }}</div>
+<div class="item-weight">Bobot: {{ it.weight }}</div>
+<div class="item-options" id="opts-{{ idx }}">
+  {% for opt in it.options %}
+  {% set score = opt.score %}
+  <button type="button" class="status-btn score-{{ score }}" data-score="{{ score }}"
+    onclick="{% if readonly_mode %}return false{% else %}toggleStatus({{ idx }}, {{ score }}){% endif %}" {{ 'disabled' if readonly_mode else '' }}>{{ opt.label }}</button>
+  {% endfor %}
+</div>
+<div class="helper-foto-status" id="helper-status-{{ idx }}" style="font-size:.7rem;margin-top:2px;margin-bottom:2px;min-height:1rem;color:#6b7280;">{{ it.helper }}</div>
+{% if it.wajib_foto_policy != "tanpa" or it.policy_if_no %}
+<div class="photo-wrapper" id="photo-wrapper-{{ idx }}">
+  <div style="display:flex;align-items:center;gap:4px;width:100%">
+    <video id="video-{{ idx }}" style="width:70px;height:50px;object-fit:cover;border-radius:6px;border:1px solid #d1d5db;display:none" muted playsinline></video>
+    <div class="photo-thumb-wrap" id="thumb-wrap-{{ idx }}" style="position:relative;{{ 'display:block;' if initial_status_data and idx < initial_status_data|length and initial_status_data[idx].get('foto') else 'display:none;' }}">
+      <a href="{{ (initial_status_data[idx].get('foto','')) if initial_status_data and idx < initial_status_data|length and initial_status_data[idx].get('foto') else '#' }}" target="_blank" title="Klik untuk lihat besar">
+      <img class="photo-preview" id="preview-{{ idx }}" src="{{ (initial_status_data[idx].get('foto','')+'?t='+today_str) if initial_status_data and idx < initial_status_data|length and initial_status_data[idx].get('foto') else '' }}" style="display:{{ 'block' if initial_status_data and idx < initial_status_data|length and initial_status_data[idx].get('foto') else 'none' }};width:50px;height:50px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb;cursor:pointer;">
+      </a>
+      <button type="button" class="photo-del-btn" data-idx="{{ idx }}" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:none;background:#ef4444;color:white;font-size:11px;line-height:18px;text-align:center;cursor:pointer;padding:0;">✕</button>
+      <div class="upload-progress" id="upload-progress-{{ idx }}" style="position:absolute;bottom:0;left:0;right:0;height:4px;background:#e5e7eb;border-radius:0 0 6px 6px;overflow:hidden;display:none;">
+        <div class="progress-bar" style="height:100%;width:0%;background:#22c55e;transition:width .3s;"></div>
+      </div>
+    </div>
+    <div class="video-thumb-wrap" id="video-thumb-{{ idx }}" style="position:relative;{{ 'display:block;' if initial_status_data and idx < initial_status_data|length and initial_status_data[idx].get('video_path') else 'display:none;' }}">
+      <a href="{{ initial_status_data[idx].get('video_path','') if initial_status_data and idx < initial_status_data|length and initial_status_data[idx].get('video_path') else '#' }}" target="_blank" title="Klik untuk lihat video besar">
+      <video class="video-preview" id="preview-video-{{ idx }}" src="{{ (initial_status_data[idx].get('video_path','')) if initial_status_data and idx < initial_status_data|length and initial_status_data[idx].get('video_path') else '' }}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb;" muted preload="none"></video>
+      </a>
+      <button type="button" class="video-del-btn" data-idx="{{ idx }}" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:none;background:#ef4444;color:white;font-size:11px;line-height:18px;text-align:center;cursor:pointer;padding:0;">✕</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <button type="button" class="cam-btn" data-idx="{{ idx }}" style="padding:4px 10px;border:1px solid #2563eb;border-radius:6px;background:#eff6ff;color:#2563eb;font-size:.72rem;cursor:pointer;white-space:nowrap;">📷 Foto</button>
+      <button type="button" class="video-btn" data-idx="{{ idx }}" style="padding:4px 10px;border:1px solid #7c3aed;border-radius:6px;background:#f5f3ff;color:#7c3aed;font-size:.72rem;cursor:pointer;white-space:nowrap;">🎥 Video</button>
+    </div>
+  </div>
+  <div class="foto-desc" id="foto-desc-{{ idx }}" style="font-size:.65rem;color:#6b7280;margin-top:2px;display:{{ 'block' if initial_status_data and idx < initial_status_data|length and initial_status_data[idx].get('foto_desc') else 'none' }};">{{ (initial_status_data[idx].get('foto_desc','')) if initial_status_data and idx < initial_status_data|length and initial_status_data[idx].get('foto_desc') else '' }}</div>
+  <div class="foto-saran" id="foto-saran-{{ idx }}" style="font-size:.65rem;color:#dc2626;margin-top:1px;display:none;"></div>
+</div>
+{% endif %}
+<textarea class="note-input" data-idx="{{ idx }}" placeholder="{{ 'Catatan... (wajib diisi)' if it.wajib_catatan else 'Catatan...' }}" oninput="handleNote({{ idx }}, this.value)"></textarea>
+</div>
+{% endfor %}
+</div>
+{% endif %}
+{% endfor %}
+</form>
+
+<!-- Submit bar -->
+<div class="submit-bar">
+  <div>
+    <div class="summary-text" id="summary-text">0/{{ item_count }} terisi</div>
+  </div>
+  <div style="text-align:right">
+    {% if conflict_mode or is_submitted %}
+    <button class="btn-primary" disabled style="opacity:.5;cursor:not-allowed;">🔒 Read Only</button>
+    {% else %}
+    <button class="btn-primary" onclick="submitForm()" id="submit-btn">📤 Submit</button>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+// ── State ──
+var itemStates = {};
+for (var i = 0; i < {{ item_count }}; i++) itemStates[i] = {status: '', note: '', foto: ''};
+
+// ── Master items ──
+var masterItems = {{ items | tojson | safe }};
+for (var i = 0; i < masterItems.length; i++) {
+  if (!window._masterItems) window._masterItems = {};
+  window._masterItems[masterItems[i].idx] = masterItems[i];
+}
+
+// ── Kamera langsung: getUserMedia ──
+var activeStreams = {};
+var uploadQueue = {}; // idx -> boolean (sedang upload)
+
+function showLoading(idx) {
+  var btn = document.querySelector('.cam-btn[data-idx="' + idx + '"]');
+  if (btn) { btn.textContent = '⏳ Memproses...'; btn.disabled = true; btn.style.opacity = '.6'; }
+}
+function hideLoading(idx) {
+  var btn = document.querySelector('.cam-btn[data-idx="' + idx + '"]');
+  if (btn) { btn.textContent = '📷 Foto'; btn.disabled = false; btn.style.opacity = '1'; }
+}
+
+function showProgress(idx, pct) {
+  var wrap = document.getElementById('upload-progress-' + idx);
+  if (!wrap) return;
+  wrap.style.display = 'block';
+  wrap.querySelector('.progress-bar').style.width = pct + '%';
+  if (pct >= 100) {
+    setTimeout(function(){ wrap.style.display = 'none'; }, 800);
+  }
+}
+
+function uploadFile(idx, blob) {
+  if (uploadQueue[idx]) return; // sedang upload
+  uploadQueue[idx] = true;
+  showLoading(idx);
+
+  var formData = new FormData();
+  formData.append('kantor_code', '{{ kantor_code }}');
+  formData.append('idx', idx);
+  formData.append('file', blob, 'foto_' + idx + '.jpg');
+
+  // Ambil geolocation
+  function doUpload() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/survey/api/kantor-checklist/upload-foto', true);
+    xhr.withCredentials = true;
+
+    xhr.upload.onprogress = function(e) {
+      if (e.lengthComputable) {
+        var pc = Math.round((e.loaded / e.total) * 70);
+        showProgress(idx, pc);
+        var btn = document.querySelector('.cam-btn[data-idx="' + idx + '"]');
+        if (btn) btn.textContent = '⏳ Upload ' + pc + '%';
+      }
+    };
+
+    xhr.onload = function() {
+      uploadQueue[idx] = false;
+      var btn = document.querySelector('.cam-btn[data-idx="' + idx + '"]');
+      if (btn) { btn.textContent = '🔍 Analisa...'; }
+      if (xhr.status === 200) {
+        try {
+          var d = JSON.parse(xhr.responseText);
+          if (d.ok) {
+            showProgress(idx, 100);
+            itemStates[idx].foto = d.foto_path;
+            autoSave(idx, 'foto', d.foto_path);
+            var preview = document.getElementById('preview-' + idx);
+            var thumbWrap = document.getElementById('thumb-wrap-' + idx);
+            if (thumbWrap) thumbWrap.style.display = 'block';
+            if (preview) { 
+              preview.src = d.foto_path + '?t=' + Date.now();
+              preview.style.display = 'block';
+            }
+            var btn = document.querySelector('.cam-btn[data-idx="' + idx + '"]');
+            if (btn) { btn.textContent = '✅ Foto OK'; btn.disabled = false; btn.style.opacity = '1'; btn.style.background = '#f0fdf4'; btn.style.borderColor = '#16a34a'; btn.style.color = '#16a34a'; }
+            // Tampilkan deskripsi foto dari Gemini
+            var descEl = document.getElementById('foto-desc-' + idx);
+            if (descEl && d.foto_desc) {
+              descEl.innerHTML = d.foto_desc;
+              descEl.style.display = 'block';
+              if (d.foto_relevan === false) {
+                descEl.style.color = '#dc2626';
+                // Tampilkan saran
+                var saranEl = document.getElementById('foto-saran-' + idx);
+                if (saranEl && d.foto_saran) {
+                  saranEl.textContent = '💡 ' + d.foto_saran;
+                  saranEl.style.display = 'block';
+                }
+              } else {
+                descEl.style.color = '#6b7280';
+                var saranEl = document.getElementById('foto-saran-' + idx);
+                if (saranEl) saranEl.style.display = 'none';
+              }
+            }
+          } else {
+            showProgress(idx, 0);
+            var btn = document.querySelector('.cam-btn[data-idx="' + idx + '"]');
+            if (btn) { btn.textContent = '📷 Foto'; btn.disabled = false; btn.style.opacity = '1'; btn.style.background = '#eff6ff'; btn.style.borderColor = '#2563eb'; btn.style.color = '#2563eb'; }
+            alert('❌ Upload gagal: ' + (d.error || 'unknown'));
+          }
+        } catch(e) {
+          showProgress(idx, 0);
+          var btn = document.querySelector('.cam-btn[data-idx="' + idx + '"]');
+          if (btn) { btn.textContent = '📷 Foto'; btn.disabled = false; btn.style.opacity = '1'; btn.style.background = '#eff6ff'; btn.style.borderColor = '#2563eb'; btn.style.color = '#2563eb'; }
+          alert('❌ Upload gagal: parse error');
+        }
+      } else {
+        showProgress(idx, 0);
+        uploadQueue[idx] = false;
+        var btn = document.querySelector('.cam-btn[data-idx="' + idx + '"]');
+        if (btn) { btn.textContent = '📷 Foto'; btn.disabled = false; btn.style.opacity = '1'; btn.style.background = '#eff6ff'; btn.style.borderColor = '#2563eb'; btn.style.color = '#2563eb'; }
+        alert('❌ Upload gagal (HTTP ' + xhr.status + ')');
+      }
+    };
+
+    xhr.onerror = function() {
+      uploadQueue[idx] = false;
+      hideLoading(idx);
+      showProgress(idx, 0);
+      var btn = document.querySelector('.cam-btn[data-idx="' + idx + '"]');
+      if (btn) { btn.textContent = '📷 Foto'; btn.disabled = false; btn.style.opacity = '1'; btn.style.background = '#eff6ff'; btn.style.borderColor = '#2563eb'; btn.style.color = '#2563eb'; }
+      alert('❌ Upload gagal — cek koneksi');
+    };
+
+    xhr.send(formData);
+  }
+
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(function(pos) {
+      formData.append('geo', pos.coords.latitude.toFixed(6) + ',' + pos.coords.longitude.toFixed(6));
+      doUpload();
+    }, function() {
+      doUpload(); // fallback — gak dapet lokasi
+    }, { timeout: 3000, enableHighAccuracy: false });
+  } else {
+    doUpload();
+  }
+}
+
+// ── Rekam Video ──
+var videoRecorders = {};
+var mediaRecorders = {};
+
+function recordVideo(idx) {
+  var btn = document.querySelector('.video-btn[data-idx="' + idx + '"]');
+  if (!btn) return;
+  
+  // Cek kalo lagi recording atau sebelumnya proses
+  if (videoRecorders[idx] === 'recording') {
+    // Stop recording
+    if (mediaRecorders[idx]) {
+      mediaRecorders[idx].stop();
+    }
+    return;
+  }
+  
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert('Browser tidak mendukung perekaman video.');
+    return;
+  }
+  
+  btn.textContent = '⏹️ Stop Video';
+  btn.style.background = '#fef2f2';
+  btn.style.borderColor = '#ef4444';
+  btn.style.color = '#ef4444';
+  videoRecorders[idx] = 'recording';
+  
+  navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
+    audio: false
+  }).then(function(stream) {
+    // Tampilkan preview video
+    var vidEl = document.getElementById('video-' + idx);
+    if (vidEl) { vidEl.srcObject = stream; vidEl.style.display = 'block'; vidEl.play(); }
+    
+    var chunks = [];
+    var mimeType = 'video/webm';
+    if (!MediaRecorder.isTypeSupported('video/webm')) {
+      if (MediaRecorder.isTypeSupported('video/mp4')) mimeType = 'video/mp4';
+      else mimeType = '';
+    }
+    var recorder = new MediaRecorder(stream, mimeType ? { mimeType: mimeType, videoBitsPerSecond: 500000 } : { videoBitsPerSecond: 500000 });
+    mediaRecorders[idx] = recorder;
+    
+    recorder.ondataavailable = function(e) {
+      if (e.data.size > 0) chunks.push(e.data);
+    };
+    
+    recorder.onstop = function() {
+      // Hentikan stream
+      stream.getTracks().forEach(function(t) { t.stop(); });
+      if (window.activeVideoStreams && window.activeVideoStreams[idx]) {
+        delete window.activeVideoStreams[idx];
+      }
+      // Sembunyikan preview
+      var vidEl = document.getElementById('video-' + idx);
+      if (vidEl) { vidEl.srcObject = null; vidEl.style.display = 'none'; }
+      
+      var blob = new Blob(chunks, { type: 'video/webm' });
+      if (blob.size < 1000) {
+        alert('Video terlalu pendek atau gagal direkam.');
+        btn.textContent = '🎥 Video';
+        btn.style.background = '#f5f3ff';
+        btn.style.borderColor = '#7c3aed';
+        btn.style.color = '#7c3aed';
+        videoRecorders[idx] = null;
+        return;
+      }
+      
+      // Upload video
+      btn.textContent = '⏳ Upload...';
+      uploadVideo(idx, blob);
+    };
+    
+    // Auto-stop setelah 15 detik
+    recorder.start(100); // 100ms per chunk
+    videoRecorders[idx] = 'recording';
+    setTimeout(function() {
+      if (recorder.state === 'recording') {
+        recorder.stop();
+      }
+    }, 15000);
+  }).catch(function(err) {
+    btn.textContent = '🎥 Video';
+    btn.style.background = '#f5f3ff';
+    btn.style.borderColor = '#7c3aed';
+    btn.style.color = '#7c3aed';
+    videoRecorders[idx] = null;
+    alert('Gagal buka kamera video: ' + err.message);
+  });
+}
+
+function uploadVideo(idx, blob) {
+  var btn = document.querySelector('.video-btn[data-idx="' + idx + '"]');
+  if (btn) { btn.textContent = '⏳ Upload...'; btn.disabled = true; btn.style.opacity = '.6'; }
+  
+  // Tampilkan progress bar
+  var wrap = document.getElementById('upload-progress-' + idx);
+  if (wrap) { wrap.style.display = 'block'; wrap.querySelector('.progress-bar').style.width = '5%'; }
+  
+  var formData = new FormData();
+  formData.append('kantor_code', '{{ kantor_code }}');
+  formData.append('idx', idx);
+  formData.append('file', blob, 'video_' + idx + '.webm');
+  formData.append('is_video', '1');
+  
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', '/survey/api/kantor-checklist/upload-foto', true);
+  xhr.withCredentials = true;
+  
+  xhr.upload.onprogress = function(e) {
+    if (e.lengthComputable) {
+      var pc = Math.round((e.loaded / e.total) * 80);
+      showProgress(idx, pc);
+      if (btn) btn.textContent = '⏳ Upload ' + pc + '%';
+    }
+  };
+  
+  xhr.onload = function() {
+    if (btn) btn.textContent = '⚙️ Kompresi...';
+    if (xhr.status === 200) {
+      try {
+        var d = JSON.parse(xhr.responseText);
+        if (d.ok) {
+          showProgress(idx, 100);
+          itemStates[idx].video_path = d.video_path;
+          autoSave(idx, 'video_path', d.video_path);
+          // Tampilkan thumbnail video
+          var wrap = document.getElementById('video-thumb-' + idx);
+          if (wrap) wrap.style.display = 'block';
+          var vidPreview = document.getElementById('preview-video-' + idx);
+          if (vidPreview) vidPreview.src = d.video_path || '';
+          // Update link thumbnail
+          var vidLink = document.querySelector('#video-thumb-' + idx + ' a');
+          if (vidLink) vidLink.href = d.video_path || '#';
+          if (btn) { btn.textContent = '✅ Video OK'; btn.disabled = false; btn.style.opacity = '1'; btn.style.background = '#f0fdf4'; btn.style.borderColor = '#16a34a'; btn.style.color = '#16a34a'; }
+        } else {
+          if (btn) { btn.textContent = '🎥 Video'; btn.disabled = false; btn.style.opacity = '1'; btn.style.background = '#f5f3ff'; btn.style.borderColor = '#7c3aed'; btn.style.color = '#7c3aed'; }
+          if (wrap) wrap.style.display = 'none';
+          alert('❌ Upload video gagal: ' + (d.error || 'unknown'));
+        }
+      } catch(e) {
+        if (btn) { btn.textContent = '🎥 Video'; btn.disabled = false; btn.style.opacity = '1'; btn.style.background = '#f5f3ff'; btn.style.borderColor = '#7c3aed'; btn.style.color = '#7c3aed'; }
+        alert('❌ Upload video gagal: parse error');
+      }
+    } else {
+      if (btn) { btn.textContent = '🎥 Video'; btn.style.background = '#f5f3ff'; btn.style.borderColor = '#7c3aed'; btn.style.color = '#7c3aed'; }
+      alert('❌ Upload video gagal (HTTP ' + xhr.status + ')');
+    }
+  };
+  
+  xhr.onerror = function() {
+    var btn = document.querySelector('.video-btn[data-idx="' + idx + '"]');
+    if (btn) { btn.textContent = '🎥 Video'; btn.style.background = '#f5f3ff'; btn.style.borderColor = '#7c3aed'; btn.style.color = '#7c3aed'; }
+    alert('❌ Upload video gagal — cek koneksi');
+  };
+  
+  xhr.send(formData);
+}
+
+function bukaKamera(idx) {
+  var video = document.getElementById('video-' + idx);
+  var preview = document.getElementById('preview-' + idx);
+  var btn = document.querySelector('.cam-btn[data-idx="' + idx + '"]');
+  if (!video || !btn) return;
+
+  if (video.style.display === 'block') {
+    var canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    var ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    // Upload file langsung ke server — loading dulu
+    showLoading(idx);
+    canvas.toBlob(function(blob) {
+      if (blob) {
+        uploadFile(idx, blob);
+      } else {
+        alert('❌ Gagal convert gambar');
+      }
+    }, 'image/jpeg', 0.85);
+
+    if (activeStreams[idx]) {
+      activeStreams[idx].getTracks().forEach(function(t){ t.stop(); });
+      delete activeStreams[idx];
+    }
+    video.style.display = 'none';
+    // Jangan reset teks tombol — showLoading sudah set '⏳ Memproses...'
+    // btn.textContent = '📷 Ambil Foto'; // skip — loading sedang muncul
+    return;
+  }
+
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false
+    }).then(function(stream) {
+      activeStreams[idx] = stream;
+      video.srcObject = stream;
+      video.style.display = 'block';
+      btn.textContent = '🔴 Capture';
+      video.onloadedmetadata = function() { video.play(); };
+    }).catch(function(err) {
+      alert('Gagal buka kamera: ' + err.message + '. Coba izinkan akses kamera.');
+    });
+  } else {
+    alert('Browser tidak mendukung kamera langsung. Gunakan HP atau Chrome terbaru.');
+  }
+}
+
+function handlePhotoClick(idx) {
+  bukaKamera(idx);
+}
+
+function hapusFoto(idx) {
+  var fotoPath = itemStates[idx].foto;
+  if (!fotoPath) return;
+
+  // Konfirmasi
+  if (!confirm('Hapus foto ini?')) return;
+
+  var formData = new FormData();
+  formData.append('foto_path', fotoPath);
+
+  fetch('/survey/api/kantor-checklist/hapus-foto', {
+    credentials: 'include',
+    method: 'POST',
+    body: formData
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (d.ok) {
+      itemStates[idx].foto = '';
+      autoSave(idx, 'foto', '');
+      var preview = document.getElementById('preview-' + idx);
+      var thumbWrap = document.getElementById('thumb-wrap-' + idx);
+      var btn = document.querySelector('.cam-btn[data-idx="' + idx + '"]');
+      if (preview) { preview.style.display = 'none'; preview.src = ''; }
+      if (thumbWrap) thumbWrap.style.display = 'none';
+      if (btn) btn.textContent = '📷 Ambil Foto';
+      var descEl = document.getElementById('foto-desc-' + idx);
+      if (descEl) { descEl.style.display = 'none'; descEl.textContent = ''; }
+      var saranEl = document.getElementById('foto-saran-' + idx);
+      if (saranEl) { saranEl.style.display = 'none'; saranEl.textContent = ''; }
+    } else {
+      alert('❌ Gagal hapus foto: ' + (d.error || 'unknown'));
+    }
+  })
+  .catch(function(e) {
+    alert('Error: ' + e.message);
+  });
+}
+
+function hapusVideo(idx) {
+  var vidPath = itemStates[idx].video_path;
+  if (!vidPath) return;
+  if (!confirm('Hapus video ini?')) return;
+  var fd = new FormData();
+  fd.append('foto_path', vidPath);
+  fetch('/survey/api/kantor-checklist/hapus-foto', { credentials:'include', method:'POST', body:fd })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    if (d.ok) {
+      itemStates[idx].video_path = '';
+      autoSave(idx, 'video_path', '');
+      var wrap = document.getElementById('video-thumb-' + idx);
+      if (wrap) wrap.style.display = 'none';
+      var vp = document.getElementById('preview-video-' + idx);
+      if (vp) vp.src = '';
+      var btn = document.querySelector('.video-btn[data-idx="' + idx + '"]');
+      if (btn) { btn.textContent = '🎥 Video'; btn.style.background = '#f5f3ff'; btn.style.borderColor = '#7c3aed'; btn.style.color = '#7c3aed'; }
+    } else { alert('❌ Gagal hapus video: ' + (d.error || 'unknown')); }
+  })
+  .catch(function(e){ alert('Error: ' + e.message); });
+}
+
+function handleNote(idx, val) { itemStates[idx].note = val; }
+
+function updateSummary() {
+  var filled = 0;
+  for (var i = 0; i < {{ item_count }}; i++) { if (itemStates[i].status !== '' && itemStates[i].status !== null && itemStates[i].status !== undefined) filled++; }
+  document.getElementById('summary-text').textContent = filled + '/{{ item_count }} terisi';
+  document.getElementById('submit-btn').disabled = (filled === 0);
+
+  // Update progress per kategori
+  var cats = ['A','B','C','D','E','F','G'];
+  for (var c = 0; c < cats.length; c++) {
+    var catCode = cats[c];
+    var el = document.getElementById('cat-progress-' + catCode);
+    if (!el) continue;
+    var total = 0, done = 0;
+    // Baca dari HTML: format "0/6" — ambil total dari textContent
+    var parts = el.textContent.split('/');
+    total = parseInt(parts[1] || '0', 10);
+    // Hitung berapa yang sudah diisi dalam kategori ini
+    var firstItem = c > 0 ? cats[c-1] : '';
+    for (var i = 0; i < {{ item_count }}; i++) {
+      var item = window._masterItems ? window._masterItems[i] : null;
+      if (item && item.cat === catCode && itemStates[i].status !== '' && itemStates[i].status !== null && itemStates[i].status !== undefined) {
+        done++;
+      }
+    }
+    el.textContent = done + '/' + total;
+  }
+}
+
+function toggleStatus(idx, value) {
+  var btns = document.querySelectorAll('.item[data-idx="' + idx + '"] .status-btn');
+  btns.forEach(function(b) {
+    var isSelected = parseInt(b.getAttribute('data-score'), 10) === value;
+    b.classList.toggle('selected', isSelected);
+  });
+  itemStates[idx].status = value;
+  updateSummary();
+
+  // Auto-save
+  autoSave(idx, 'status', value);
+
+  // Tampilkan helper dinamis — arti dari status yg dipilih
+  var item = window._masterItems ? window._masterItems[idx] : null;
+  var helperEl = document.getElementById('helper-status-' + idx);
+  if (helperEl) {
+    var helperText = '';
+    if (item && item.helper) {
+      if (value === 0) helperText = '✅ ' + item.helper;
+      else if (value > 0) helperText = '⚠️ ' + item.helper;
+    }
+    helperEl.innerHTML = helperText;
+  }
+
+  // ── Policy dinamis: policy_if_no= true + opsi 'tidak ada' (weight_mult=0.0) → sembunyikan foto/video ──
+  if (item && item.policy_if_no) {
+    var isNoOpt = false;
+    if (item.options && item.options.length > 0) {
+      // Cari option yg dipilih
+      for (var oi = 0; oi < item.options.length; oi++) {
+        if (item.options[oi].score === value && item.options[oi].weight_mult === 0.0) {
+          isNoOpt = true;
+          break;
+        }
+      }
+    }
+    if (isNoOpt) {
+      // Sembunyikan photo-wrapper
+      var pw = document.getElementById('photo-wrapper-' + idx);
+      if (pw) pw.style.display = 'none';
+      // Kalo ada foto/video terlanjur, konfirmasi hapus
+      if (itemStates[idx].foto || itemStates[idx].video_path) {
+        if (confirm('⚠️ Pilihan "tidak ada" tidak perlu dokumentasi.\nFoto/video yang sudah ada akan dihapus. Lanjutkan?')) {
+          if (itemStates[idx].foto) {
+            hapusFoto(idx);
+          }
+          if (itemStates[idx].video_path) {
+            hapusVideo(idx);
+          }
+        }
+      }
+    } else {
+      // Tampilkan kembali photo-wrapper
+      var pw = document.getElementById('photo-wrapper-' + idx);
+      if (pw) pw.style.display = 'flex';
+    }
+  }
+
+  // Cek wajib_foto
+  if (window._masterItems && window._masterItems[idx] && window._masterItems[idx].wajib_foto_policy && window._masterItems[idx].wajib_foto_policy !== "tanpa") {
+    var policy = window._masterItems[idx].wajib_foto_policy;
+    var needsPhoto = false;
+    if (policy === 'buktikan' && [0,1].indexOf(value) >= 0) needsPhoto = true;
+    else if (policy === 'bermasalah' && value > 0) needsPhoto = true;
+    else if (policy === 'ada_berfungsi' && value === 0) needsPhoto = true;
+    if (needsPhoto) {
+      var preview = document.getElementById('preview-' + idx);
+      if (preview && !preview.src) {
+        alert('⚠️ Status ini WAJIB foto!');
+      }
+    }
+  }
+}
+
+function autoSave(idx, field, value) {
+  // Gunakan FormData untuk kompatibilitas dengan backend existing
+  var formData = new FormData();
+  formData.append('kantor_code', '{{ kantor_code }}');
+  formData.append('idx', idx);
+  formData.append('field', field);
+  formData.append('value', String(value));
+
+  fetch('/survey/api/kantor-checklist/auto-save', {
+    credentials: 'include',
+    method: 'POST',
+    body: formData
+  }).then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok) { /* auto-save ok, silent */ }
+    }).catch(function() { /* silent */ });
+}
+
+// ── Submit ──
+function submitForm() {
+  var workflow = 'submitted';
+  var errors = [];
+  var firstErrorIdx = -1;
+  var firstErrorType = ''; // 'status' or 'foto'
+
+  for (var i = 0; i < {{ item_count }}; i++) {
+    if (!window._masterItems || !window._masterItems[i]) continue;
+    var item = window._masterItems[i];
+    var st = itemStates[i].status;
+    var hasStatus = (st !== '' && st !== null && st !== undefined);
+
+    // Cek 1: status belum dipilih
+    if (!hasStatus) {
+      if (firstErrorIdx < 0) { firstErrorIdx = i; firstErrorType = 'status'; }
+      var itemEl = document.querySelector('.item[data-idx="' + i + '"]');
+      var label = itemEl ? itemEl.getAttribute('data-item-label') || (item.cat + '.' + (i+1)) : (item.cat + '.' + (i+1));
+      errors.push(label + ' — ' + item.label.substr(0,45) + ' — belum pilih status');
+      continue;
+    }
+
+    // Cek 2: foto wajib tapi belum ada — include policy_if_no dinamis
+    var policy = item.wajib_foto_policy || 'bermasalah';
+    st = parseInt(st, 10);
+    
+    // Policy dinamis: kalo 'policy_if_no=true' dan opsi punya weight_mult=0.0, skip foto
+    if (item.policy_if_no) {
+      var selectedOpt = null;
+      if (item.options) {
+        for (var oi = 0; oi < item.options.length; oi++) {
+          if (item.options[oi].score === st) {
+            selectedOpt = item.options[oi];
+            break;
+          }
+        }
+      }
+      if (selectedOpt && selectedOpt.weight_mult === 0.0) {
+        // Opsi 'tidak ada' — skip foto
+        var needsPhoto = false;
+      } else {
+        var needsPhoto = false;
+        if (policy === 'buktikan') needsPhoto = true;
+        else if (policy === 'bermasalah' && st > 0) needsPhoto = true;
+        else if (policy === 'ada_berfungsi' && st === 0) needsPhoto = true;
+      }
+    } else {
+      var needsPhoto = false;
+      if (policy === 'buktikan') needsPhoto = true;
+      else if (policy === 'bermasalah' && st > 0) needsPhoto = true;
+      else if (policy === 'ada_berfungsi' && st === 0) needsPhoto = true;
+    }
+    if (needsPhoto && !itemStates[i].foto) {
+      // Cek juga video kalo allow_video
+      var hasVideo = item.allow_video && itemStates[i].video_path && itemStates[i].video_path.trim() !== '';
+      if (!hasVideo) {
+        if (firstErrorIdx < 0) { firstErrorIdx = i; firstErrorType = 'foto'; }
+        var itemEl = document.querySelector('.item[data-idx="' + i + '"]');
+        var label = itemEl ? itemEl.getAttribute('data-item-label') || (item.cat + '.' + (i+1)) : (item.cat + '.' + (i+1));
+        errors.push(label + ' — ' + item.label.substr(0,45) + ' — WAJIB upload foto/video');
+      }
+    }
+    
+    // Cek 3: wajib catatan
+    if (item.wajib_catatan && (!itemStates[i].note || itemStates[i].note.trim() === '')) {
+      if (firstErrorIdx < 0) { firstErrorIdx = i; firstErrorType = 'status'; }
+      var itemEl = document.querySelector('.item[data-idx="' + i + '"]');
+      var label = itemEl ? itemEl.getAttribute('data-item-label') || (item.cat + '.' + (i+1)) : (item.cat + '.' + (i+1));
+      errors.push(label + ' — ' + item.label.substr(0,45) + ' — WAJIB isi catatan');
+    }
+  }
+
+  // Kalo ada error: tampilkan popup + scroll ke item pertama
+  if (errors.length > 0) {
+    var msg = '⚠️ Ada ' + errors.length + ' item yang perlu dilengkapi:\n\n';
+    msg += errors.slice(0,8).join('\n');
+    if (errors.length > 8) msg += '\n...dan ' + (errors.length - 8) + ' lainnya';
+    alert(msg);
+
+    // Scroll & highlight item pertama yang error
+    if (firstErrorIdx >= 0) {
+      var el = document.querySelector('.item[data-idx="' + firstErrorIdx + '"]');
+      if (el) {
+        // Expand parent category dulu
+        var section = el.closest('[style*="margin:6px 0"]') || el.parentNode;
+        while (section && section.classList) {
+          if (section.classList.contains('section-collapsed')) {
+            section.classList.remove('section-collapsed');
+            // Update localStorage
+            var catHeader = section.querySelector('.section-header span');
+            if (catHeader) {
+              var catCode = catHeader.textContent.trim().charAt(0);
+              try {
+                var k = 'survey_collapsed_{{ kantor_code }}';
+                var c = JSON.parse(localStorage.getItem(k) || '{}');
+                c[catCode] = false;
+                localStorage.setItem(k, JSON.stringify(c));
+              } catch(e) {}
+            }
+          }
+          section = section.parentNode;
+        }
+        // Scroll dan highlight
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.style.transition = 'background .5s';
+        el.style.background = '#fef9c3';
+        setTimeout(function() { el.style.background = ''; }, 3000);
+      }
+    }
+    return;
+  }
+
+  var data = {kantor_code: '{{ kantor_code }}', pic: '{{ user_id_pic }}', workflow_status: workflow, items: itemStates};
+  document.getElementById('submit-btn').disabled = true;
+  document.getElementById('submit-btn').textContent = '⏳';
+
+  fetch('/survey/api/kantor-checklist/submit-session', {
+    credentials: 'include',
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(data)
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (d.ok) {
+        // Buka PDF otomatis di tab baru
+        window.open('/survey/api/public/pdf/{{ kantor_code }}?dl=1', '_blank');
+        // Redirect ke dashboard setelah jeda biar PDF sempat generate
+        setTimeout(function() {
+          window.location.href = '/survey/kantor-checklist/dashboard';
+        }, 1500);
+      } else {
+      alert('❌ Gagal: ' + (d.error || 'unknown'));
+      document.getElementById('submit-btn').disabled = false;
+      document.getElementById('submit-btn').textContent = '📤 Submit';
+    }
+  })
+  .catch(function(e) {
+    alert('Error: ' + e.message);
+    document.getElementById('submit-btn').disabled = false;
+    document.getElementById('submit-btn').textContent = '📤 Submit';
+  });
+}
+
+// Bind tombol kamera
+document.querySelectorAll('.cam-btn').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    var idx = parseInt(this.getAttribute('data-idx'));
+    handlePhotoClick(idx);
+  });
+});
+
+// Bind tombol video
+if (document.querySelector('.video-btn')) {
+  document.querySelectorAll('.video-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var idx = parseInt(this.getAttribute('data-idx'));
+      recordVideo(idx);
+    });
+  });
+}
+
+// Bind tombol hapus foto
+document.querySelectorAll('.photo-del-btn').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    var idx = parseInt(this.getAttribute('data-idx'));
+    hapusFoto(idx);
+  });
+});
+
+// Bind tombol hapus video
+if (document.querySelector('.video-del-btn')) {
+  document.querySelectorAll('.video-del-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var idx = parseInt(this.getAttribute('data-idx'));
+      hapusVideo(idx);
+    });
+  });
+}
+
+// ── Akordeon: collapse/expand per kategori ──
+(function() {
+  var storageKey = 'survey_collapsed_{{ kantor_code }}';
+  var collapsed = {};
+  try { collapsed = JSON.parse(localStorage.getItem(storageKey) || '{}'); } catch(e) {}
+  
+  document.querySelectorAll('.section-header').forEach(function(header) {
+    var section = header.parentNode;
+    var catCode = header.querySelector('span').textContent.trim().charAt(0);
+    
+    // Restore state dari localStorage
+    if (collapsed[catCode]) {
+      section.classList.add('section-collapsed');
+    }
+    
+    header.addEventListener('click', function() {
+      section.classList.toggle('section-collapsed');
+      var isCollapsed = section.classList.contains('section-collapsed');
+      collapsed[catCode] = isCollapsed;
+      try { localStorage.setItem(storageKey, JSON.stringify(collapsed)); } catch(e) {}
+    });
+  });
+})();
+
+// ── Load saved session data on page load ──
+(function() {
+  fetch('/survey/api/kantor-checklist/load-session?kantor_code={{ kantor_code }}', {
+  credentials: 'include'
+})
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (d.ok && d.data && d.data.status_data) {
+      var sd = d.data.status_data;
+      for (var i = 0; i < sd.length; i++) {
+        if (sd[i] && sd[i].status !== undefined && sd[i].status !== null && sd[i].status !== '') {
+          var sv = parseInt(sd[i].status, 10);
+          if (!isNaN(sv)) {
+            toggleStatus(i, sv);
+            itemStates[i].status = sv;
+          }
+        }
+        if (sd[i] && sd[i].note) {
+          itemStates[i].note = sd[i].note;
+          var noteEl = document.querySelector('.item[data-idx="' + i + '"] .note-input');
+          if (noteEl) noteEl.value = sd[i].note;
+        }
+        if (sd[i] && sd[i].foto) {
+          itemStates[i].foto = sd[i].foto;
+          var preview = document.getElementById('preview-' + i);
+          var thumbWrap = document.getElementById('thumb-wrap-' + i);
+          if (preview && !preview.src) {
+            preview.src = sd[i].foto + '?t=' + Date.now();
+            preview.style.display = 'block';
+            // Bungkus dengan link kalo belum
+            var parentA = preview.closest('a');
+            if (!parentA) {
+              var a = document.createElement('a');
+              a.href = sd[i].foto;
+              a.target = '_blank';
+              a.title = 'Klik untuk lihat besar';
+              preview.parentNode.insertBefore(a, preview);
+              a.appendChild(preview);
+            } else {
+              parentA.href = sd[i].foto;
+            }
+          }
+          if (thumbWrap && thumbWrap.style.display === 'none') thumbWrap.style.display = 'block';
+          if (preview && preview.style.display !== 'block') preview.style.display = 'block';
+          var btn = document.querySelector('.cam-btn[data-idx="' + i + '"]');
+          if (btn) btn.textContent = '✅ Foto OK';
+        }
+      }
+      updateSummary();
+    }
+  })
+  .catch(function() {});
+})();
+</script>
+
+</body>
+</html>

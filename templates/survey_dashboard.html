@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>📊 Rekap Survey Kondisi Kantor</title>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:#f1f5f9; font-family:system-ui,-apple-system,sans-serif; min-height:100vh; }
+.top-bar { background:#0f172a; color:#e2e8f0; padding:.7rem 1rem; display:flex; justify-content:space-between; align-items:center; font-size:.85rem; flex-wrap:wrap; gap:4px; }
+.top-bar a { color:#93c5fd; text-decoration:none; }
+.nav-link { padding:.25rem .5rem; border-radius:4px; }
+.nav-link:hover { background:rgba(255,255,255,.1); color:#fff; }
+.container { max-width:960px; margin:0 auto; padding:10px; }
+h2 { font-size:1.05rem; color:#1e293b; }
+.sub { font-size:.75rem; color:#64748b; margin:0 0 10px; }
+.summary-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:10px; }
+.dash-card { background:white; border-radius:10px; padding:10px 6px; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+.dash-card h3 { font-size:.65rem; color:#64748b; text-transform:uppercase; letter-spacing:.3px; }
+.dash-card .num { font-size:1.3rem; font-weight:700; color:#0f172a; }
+.dash-card .note { font-size:.6rem; color:#94a3b8; }
+.tab-bar { display:flex; gap:4px; margin-bottom:10px; }
+.tab-btn { flex:1; padding:7px; text-align:center; border-radius:8px; border:1.5px solid #e2e8f0; background:white; font-size:.78rem; cursor:pointer; color:#475569; }
+.tab-btn.active { background:#7c3aed; color:white; border-color:#7c3aed; }
+.item-table { width:100%; border-collapse:collapse; background:white; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+.item-table th { background:#f8fafc; padding:6px 5px; text-align:left; font-weight:600; font-size:.68rem; color:#475569; border-bottom:2px solid #e2e8f0; }
+.item-table td { padding:5px; font-size:.7rem; border-bottom:1px solid #f1f5f9; color:#334155; }
+.item-table th.sort { cursor:pointer; }
+.item-table th.sort:hover { background:#eef2ff; }
+.item-table th.asc::after, .item-table th.desc::after { font-size:.55rem; margin-left:2px; }
+.item-table th.asc::after { content:"▲"; }
+.item-table th.desc::after { content:"▼"; }
+.legend { display:flex; gap:10px; margin:8px 0; font-size:.65rem; flex-wrap:wrap; }
+.legend-dot { width:8px; height:8px; border-radius:2px; display:inline-block; }
+.green { color:#16a34a; } .yellow { color:#ca8a04; } .orange { color:#ea580c; } .red { color:#dc2626; }
+.empty { text-align:center; padding:20px; color:#94a3b8; font-size:.78rem; }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+    <strong>📋 Survey Kondisi Kantor</strong>
+    {% for m in menu_items %}
+    <a href="{{ m.url }}" class="nav-link">{{ m.icon }} {{ m.label }}</a>
+    {% endfor %}
+  </div>
+  <div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;">
+    <span style="font-size:.8rem;color:#93c5fd">👤 {{ user_name }}</span>
+    <a href="/api/logout" class="nav-link" style="color:#fca5a5">Keluar</a>
+  </div>
+</div>
+
+<div class="container">
+
+<h2>📊 Rekap Survey Kondisi Kantor</h2>
+<p class="sub">Ringkasan penilaian kelayakan outlet</p>
+
+<div class="summary-grid">
+  <div class="dash-card">
+    <h3>Total Cabang</h3>
+    <div class="num">{{ total_branches }}</div>
+    <div class="note">dari master data</div>
+  </div>
+  <div class="dash-card">
+    <h3>Sudah Dinilai</h3>
+    <div class="num">{{ done_main }}</div>
+    <div class="note">{{ "%.0f"|format(done_main/total_branches*100) if total_branches>0 else 0 }}%</div>
+  </div>
+  <div class="dash-card">
+    <h3>Belum Pernah</h3>
+    <div class="num">{{ total_branches - done_main }}</div>
+    <div class="note">perlu segera diisi</div>
+  </div>
+  <div class="dash-card">
+    <h3>Rata-rata Skor</h3>
+    <div class="num">{{ avg_main }}%</div>
+    <div class="note">{{ avg_dur }}</div>
+  </div>
+</div>
+
+<!-- 🏆 Best/Worst strip (muncul langsung, bukan tab) -->
+{% if best_items or worst_items %}
+<div style="background:linear-gradient(135deg,#f0fdf4,#fef2f2);border-radius:10px;padding:8px 10px;margin-bottom:8px;border:1px solid #e5e7eb;">
+  <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start;">
+    <div style="flex:1;min-width:200px;">
+      <div style="font-size:.75rem;color:#16a34a;font-weight:700;margin-bottom:4px;">🏆 Top 5 Best</div>
+      <ol style="margin:0;padding-left:16px;font-size:.68rem;color:#166534;">
+      {% for it in best_items %}
+        <li><strong>{{ it.cat }}</strong> — {{ it.label }} <span style="color:#16a34a;font-weight:600;">({{ "%.0f"|format(it.yes_pct) }}%)</span></li>
+      {% endfor %}
+      </ol>
+    </div>
+    <div style="flex:1;min-width:200px;">
+      <div style="font-size:.75rem;color:#dc2626;font-weight:700;margin-bottom:4px;">🔻 Top 5 Worst</div>
+      <ol style="margin:0;padding-left:16px;font-size:.68rem;color:#991b1b;">
+      {% for it in worst_items %}
+        <li><strong>{{ it.cat }}</strong> — {{ it.label }} <span style="color:#dc2626;font-weight:600;">({{ "%.0f"|format(it.yes_pct) }}%)</span></li>
+      {% endfor %}
+      </ol>
+    </div>
+  </div>
+  <div style="font-size:.6rem;color:#94a3b8;margin-top:4px;">
+    {% if best_items %}{% set t = (best_items[0].yes_pct / 2) %}{% else %}{% set t = 50 %}{% endif %}
+    📌 Standar: ≥ {{ "%.0f"|format(t) }}% → Best, di bawah → Worst. Tidak double-count.
+  </div>
+</div>
+{% endif %}
+
+<div class="tab-bar">
+  <div class="tab-btn active" data-tab="item">Per Item</div>
+  <div class="tab-btn" data-tab="branch">Per Cabang</div>
+  <div class="tab-btn" data-tab="foto">📸 Dokumentasi</div>
+  {% if user_id == '17012956' %}<div class="tab-btn" data-tab="session">Semua Session</div>{% endif %}
+</div>
+
+<!-- Tab: Per Item -->
+<div class="tab-panel" id="tab-item">
+{% if problem_items %}
+<table class="item-table">
+<thead><tr>
+  <th class="sort" onclick="sortT(this,0,'num')">#</th>
+  <th class="sort" onclick="sortT(this,1,'str')">Kat</th>
+  <th class="sort" onclick="sortT(this,2,'str')">Item</th>
+  <th class="sort" onclick="sortT(this,3,'num')">Bobot</th>
+  <th class="sort" onclick="sortT(this,4,'num')">Rata²</th>
+  <th class="sort" onclick="sortT(this,5,'num')">✅ Layak</th>
+  <th class="sort" onclick="sortT(this,6,'num')">❌ Tdk Ada</th>
+  <th style="width:48px;text-align:center">🏅</th>
+</tr></thead>
+<tbody>
+
+{% if merged_with_score %}
+{% for it in problem_items %}
+{% set idx = loop.index0 %}
+{% set pct = (1 - it.no_count / it.total) * 100 if it.total and it.total > 0 else 0 %}
+{% set badge = '' %}
+{% for b in best_items %}{% if b.idx == idx %}{% set badge = '🏆' %}{% endif %}{% endfor %}
+{% for w in worst_items %}{% if w.idx == idx %}{% set badge = '🔻' %}{% endif %}{% endfor %}
+<tr>
+  <td>{{ idx+1 }}</td>
+  <td>{{ it.cat }}</td>
+  <td>{{ it.label }}</td>
+  <td>{{ it.bobot | default('-') }}</td>
+  <td>{{ "%.0f"|format(pct) }}%</td>
+  <td>{{ it.yes_count | default(0) }}/{{ it.no_count + it.yes_count + it.rusak_count if (it.no_count and it.yes_count and it.rusak_count) else 0 }}</td>
+  <td>{{ it.no_count | default(0) }}/{{ it.no_count + it.yes_count + it.rusak_count if (it.no_count and it.yes_count and it.rusak_count) else 0 }}</td>
+  <td style="text-align:center;font-size:.8rem;">{{ badge }}</td>
+</tr>
+{% endfor %}
+{% else %}
+<tr><td colspan="8" class="empty">📭 Belum ada data survey</td></tr>
+{% endif %}
+</tbody>
+</table>
+{% else %}
+<div class="empty">📭 Belum ada data survey. Silakan isi checklist terlebih dahulu.</div>
+{% endif %}
+</div>
+
+<!-- Tab: Per Cabang -->
+<div class="tab-panel" id="tab-branch" style="display:none">
+<table class="item-table">
+<thead><tr>
+  <th class="sort" onclick="sortT(this,0,'str')">Kantor</th>
+  <th class="sort" onclick="sortT(this,1,'str')">Nama</th>
+  <th class="sort" onclick="sortT(this,2,'num')">Skor</th>
+  <th class="sort" onclick="sortT(this,3,'str')">Status</th>
+  <th>Aksi</th>
+</tr></thead>
+<tbody>
+{% if merged_with_score %}
+{% for m in merged_with_score %}
+<tr>
+  <td>{{ m.kode }}</td>
+  <td>{{ m.label }}</td>
+  <td class="{{ 'green' if m.main>=85 else 'yellow' if m.main>=65 else 'orange' if m.main>=45 else 'red' }}">{{ "%.1f"|format(m.main) }}%</td>
+  <td>{{ m.main_workflow | default('-') }}</td>
+  <td>
+    <button onclick="downloadPdf('{{ m.kode }}')" style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;border-radius:6px;padding:3px 8px;font-size:.65rem;cursor:pointer;">📄 PDF</button>
+  </td>
+</tr>
+{% endfor %}
+{% else %}
+<tr><td colspan="5" class="empty">📭 Belum ada data survey</td></tr>
+{% endif %}
+</tbody>
+</table>
+</div>
+
+<!-- Tab: Dokumentasi (foto warnings) -->
+<div class="tab-panel" id="tab-foto" style="display:none">
+<div style="background:white;border-radius:10px;padding:10px;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:8px;">
+  <div style="font-size:.85rem;font-weight:600;color:#dc2626;margin-bottom:4px;">⚠️ Peringatan Dokumentasi</div>
+  <div style="font-size:.7rem;color:#64748b;">Foto-foto yang terindikasi tidak sesuai dengan konteks pernyataan. Hasil analisa AI.</div>
+</div>
+<table class="item-table">
+<thead><tr>
+  <th class="sort" onclick="sortT(this,0,'str')">Kantor</th>
+  <th class="sort" onclick="sortT(this,1,'str')">PIC</th>
+  <th class="sort" onclick="sortT(this,2,'str')">Tgl</th>
+  <th class="sort" onclick="sortT(this,3,'str')">Item</th>
+  <th class="sort" onclick="sortT(this,4,'str')">Analisa AI</th>
+  <th>PDF</th>
+</tr></thead>
+<tbody>
+{% if foto_warnings %}
+{% for fw in foto_warnings %}
+<tr style="background:#fef2f2">
+  <td>{{ fw.kode }}</td>
+  <td>{{ fw.pic | default('-') }}</td>
+  <td>{{ fw.tgl }}</td>
+  <td><strong>{{ fw.cat }}</strong> — {{ fw.item }}</td>
+  <td style="color:#dc2626;font-size:.65rem">{{ fw.desc[:80] }}{% if fw.desc|length > 80 %}...{% endif %}</td>
+  <td><button onclick="downloadPdf('{{ fw.kode }}')" style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;border-radius:6px;padding:3px 8px;font-size:.65rem;cursor:pointer;">📄 PDF</button></td>
+</tr>
+{% endfor %}
+{% else %}
+<tr><td colspan="6" class="empty">✅ Semua dokumentasi sesuai — tidak ada peringatan</td></tr>
+{% endif %}
+</tbody>
+</table>
+
+{% if foto_referensi %}
+<div style="background:white;border-radius:10px;padding:10px;box-shadow:0 1px 3px rgba(0,0,0,.06);margin:10px 0;">
+  <div style="font-size:.85rem;font-weight:600;color:#0f172a;margin-bottom:4px;">📸 Contoh Dokumentasi Baik</div>
+  <div style="font-size:.7rem;color:#64748b;margin-bottom:8px;">Foto referensi dari cabang lain dengan status ideal — jadikan panduan dokumentasi.</div>
+  {% for ref_idx, status_map in foto_referensi.items() %}
+    {% if ref_idx < db_items_ref|length %}
+      {% set it_ref = db_items_ref[ref_idx] %}
+      <div style="margin-bottom:10px;">
+        <div style="font-size:.7rem;font-weight:600;color:#334155;">{{ it_ref.cat }} — {{ it_ref.label }}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">
+          {% for st_v, fotos in status_map.items() %}
+            {% for f in fotos %}
+              <div style="width:130px;border:1px solid #e2e8f0;border-radius:6px;padding:4px;background:#f8fafc;">
+                <img src="{{ f.foto }}" style="width:100%;height:80px;object-fit:cover;border-radius:4px;" onerror="this.style.display='none'">
+                <div style="font-size:.6rem;color:#64748b;margin-top:2px;">{{ f.kode }} — skor:{{ st_v }} {% if f.relevan %}✅{% else %}⚠️{% endif %}</div>
+                {% if f.desc %}<div style="font-size:.55rem;color:#94a3b8;">{{ f.desc[:50] }}{% if f.desc|length > 50 %}...{% endif %}</div>{% endif %}
+              </div>
+            {% endfor %}
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+</div>
+
+<!-- Tab: Semua Session -->
+{% if user_id == '17012956' %}
+<div class="tab-panel" id="tab-session" style="display:none">
+<table class="item-table">
+<thead><tr>
+  <th class="sort" onclick="sortT(this,0,'str')">Kantor</th>
+  <th class="sort" onclick="sortT(this,1,'str')">PIC</th>
+  <th class="sort" onclick="sortT(this,2,'str')">Tanggal</th>
+  <th class="sort" onclick="sortT(this,3,'str')">Status</th>
+  <th class="sort" onclick="sortT(this,4,'num')">Skor</th>
+  <th>Aksi</th>
+</tr></thead>
+<tbody>
+{% if all_sessions %}
+{% for m in all_sessions %}
+<tr>
+  <td>{{ m.kode }}</td>
+  <td>{{ m.pic | default('-') }}</td>
+  <td>{{ m.tgl[:10] if m.tgl else '-' }}</td>
+  <td>{{ m.workflow | default('-') }}</td>
+  <td>{{ "%.1f"|format(m.score) }}%</td>
+  <td>
+    {% if user_id == '17012956' or user_role == 'admin' %}
+    <button onclick="hapusSession('{{ m.kode }}')" style="background:#fee2e2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;padding:3px 8px;font-size:.65rem;cursor:pointer;">🗑</button>
+    {% endif %}
+    <button onclick="downloadPdf('{{ m.kode }}')" style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;border-radius:6px;padding:3px 8px;font-size:.65rem;cursor:pointer;">📄 PDF</button>
+  </td>
+</tr>
+{% endfor %}
+{% else %}
+<tr><td colspan="6" class="empty">📭 Belum ada session</td></tr>
+{% endif %}
+</tbody>
+</table>
+</div>
+{% endif %}
+
+<div class="legend">
+  <span>Keterangan:</span>
+  <span><span class="legend-dot" style="background:#16a34a"></span>&gt;85</span>
+  <span><span class="legend-dot" style="background:#65a30d"></span>65-84</span>
+  <span><span class="legend-dot" style="background:#ea580c"></span>45-64</span>
+  <span><span class="legend-dot" style="background:#dc2626"></span>&lt;45</span>
+</div>
+
+<!-- Panel detil kantor -->
+<div id="kantor-detail" style="display:none;margin-top:10px;">
+  <div style="background:white;border-radius:10px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <div>
+        <h3 id="detail-kode" style="font-size:.95rem;color:#0f172a;margin:0;"></h3>
+        <div id="detail-pic" style="font-size:.7rem;color:#64748b;"></div>
+      </div>
+      <button id="btn-new-survey" onclick="startNewSurvey()" style="background:#7c3aed;color:white;border:none;border-radius:8px;padding:8px 14px;font-size:.75rem;cursor:pointer;font-weight:600;">+ Mulai Survei Baru</button>
+    </div>
+
+    <div id="detail-sesi" style="margin-bottom:8px;">
+      <div style="font-size:.7rem;color:#64748b;margin-bottom:4px;">Riwayat Survei:</div>
+      <div id="sesi-list" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
+    </div>
+
+    <div id="detail-score" class="summary-grid" style="margin-bottom:8px;"></div>
+
+    <div id="detail-compare">
+      <div style="font-size:.7rem;color:#64748b;margin-bottom:4px;">Perbandingan 2 Survei Terakhir:</div>
+      <div id="banding-items" style="max-height:400px;overflow-y:auto;"></div>
+    </div>
+
+    <div style="margin-top:8px;">
+      <a href="#" onclick="closeKantor();return false;" style="font-size:.7rem;color:#64748b;">✕ Tutup</a>
+    </div>
+  </div>
+</div>
+
+</div><!-- /container -->
+
+<script>
+var currentKode = '';
+
+function loadKantor(kode) {
+  currentKode = kode;
+  document.getElementById('kantor-detail').style.display = 'block';
+  document.getElementById('detail-kode').textContent = '📂 ' + kode;
+  document.getElementById('detail-pic').textContent = 'Memuat...';
+
+  fetch('/survey/api/kantor-checklist/dashboard-data?kantor_code=' + encodeURIComponent(kode))
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(!d.ok) { alert(d.error); return; }
+      var sessions = d.sessions || [];
+      document.getElementById('detail-pic').textContent = sessions.length + ' sesi survei';
+
+      var sh = '';
+      sessions.forEach(function(s, i){
+        sh += '<a href="/survey/kantor-checklist/form/' + kode + '" style="background:#f1f5f9;padding:4px 8px;border-radius:6px;font-size:.7rem;color:#334155;text-decoration:none;border:1px solid #e2e8f0;display:inline-block;margin:2px;">';
+        sh += s.nomor_survei || '#' + (i+1);
+        if(i === sessions.length - 1) sh += ' ✅';
+        sh += '</a>';
+      });
+      document.getElementById('sesi-list').innerHTML = sh || '<span style="color:#94a3b8;font-size:.7rem;">Belum ada survei</span>';
+
+      var cats = d.cats || {};
+      var catHtml = '';
+      for(var ck in cats) {
+        var c = cats[ck];
+        catHtml += '<div class="dash-card"><h3>' + ck + ': ' + (c.name||'').substring(0,12) + '</h3><div class="num">' + c.score + '</div><div class="note">bobot ' + c.weight + '%</div></div>';
+      }
+      document.getElementById('detail-score').innerHTML = catHtml;
+
+      var comps = d.comparisons || [];
+      var items = d.items || [];
+      var itemMap = {};
+      items.forEach(function(it){ itemMap[it.idx] = it; });
+
+      var icons = {'membaik':'🟢','memburuk':'🔴','stabil':'⚪','unknown':'⚫','new':'🆕'};
+      var vlbl = {0:'✅',1:'⚠️',2:'❌'};
+
+      if(comps.length > 0) {
+        var bh = '<table style="width:100%;border-collapse:collapse;font-size:.7rem;"><thead><tr style="background:#f8fafc;"><th style="padding:4px;text-align:left;">#</th><th style="padding:4px;text-align:left;">Item</th><th style="padding:4px;text-align:center;">Trend</th><th style="padding:4px;text-align:center;">Sblm</th><th style="padding:4px;text-align:center;">Skrg</th></tr></thead><tbody>';
+        comps.forEach(function(c){
+          var it = itemMap[c.idx] || {};
+          var icon = icons[c.trend] || '❓';
+          var prv = c.prev_status !== null ? (vlbl[c.prev_status] || c.prev_status) : '-';
+          var lat = c.latest_status !== null ? (vlbl[c.latest_status] || c.latest_status) : '-';
+          bh += '<tr><td style="padding:4px;">' + c.idx + '</td><td style="padding:4px;">' + (it.label||'#').substring(0,40) + '</td><td style="padding:4px;text-align:center;">' + icon + '</td><td style="padding:4px;text-align:center;">' + prv + '</td><td style="padding:4px;text-align:center;">' + lat + '</td></tr>';
+        });
+        bh += '</tbody></table>';
+        document.getElementById('banding-items').innerHTML = bh;
+      } else {
+        document.getElementById('banding-items').innerHTML = '<div style="color:#94a3b8;font-size:.7rem;padding:8px;">Butuh minimal 2 survei untuk perbandingan</div>';
+      }
+    })
+    .catch(function(e){ alert('Gagal: ' + e); });
+}
+
+function closeKantor() {
+  document.getElementById('kantor-detail').style.display = 'none';
+  currentKode = '';
+}
+
+function startNewSurvey() {
+  if(!currentKode) return;
+  var btn = document.getElementById('btn-new-survey');
+  btn.textContent = '⏳ Membuat...';
+  btn.disabled = true;
+  var f = new FormData();
+  f.append('kantor_code', currentKode);
+  fetch('/survey/api/kantor-checklist/new-survey', {method:'POST', body:f})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d.ok && d.redirect) {
+        window.location.href = d.redirect;
+      } else {
+        alert(d.error || 'Gagal');
+        btn.textContent = '+ Mulai Survei Baru';
+        btn.disabled = false;
+      }
+    })
+    .catch(function(e){
+      alert('Error: ' + e);
+      btn.textContent = '+ Mulai Survei Baru';
+      btn.disabled = false;
+    });
+}
+</script>
+<script>
+function hapusSession(kode) {
+  if(!confirm('Hapus semua session untuk kantor ' + kode + '?')) return;
+  var f = new FormData();
+  f.append('kantor_code', kode);
+  fetch('/survey/api/kantor-checklist/delete-session', {method:'POST', body:f})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d.ok) { alert('✅ Session ' + kode + ' dihapus'); location.reload(); }
+      else { alert('❌ ' + (d.error||'Gagal')); }
+    })
+    .catch(function(e){ alert('Error: ' + e); });
+}
+function downloadPdf(kode) {
+  window.open('/survey/api/public/pdf/' + encodeURIComponent(kode) + '?dl=1', '_blank');
+}
+// Tab switching (minimal, server-reliable)
+document.querySelectorAll('.tab-btn').forEach(function(b){
+  b.addEventListener('click', function(){
+    document.querySelectorAll('.tab-btn').forEach(function(x){ x.classList.remove('active'); });
+    this.classList.add('active');
+    document.querySelectorAll('.tab-panel').forEach(function(p){ p.style.display='none'; });
+    var target = document.getElementById('tab-' + this.getAttribute('data-tab'));
+    if(target) target.style.display='block';
+  });
+});
+
+// Sort function: pure vanilla, no framework
+function sortT(header, colIdx, type) {
+  var table = header.closest('table');
+  var tbody = table.querySelector('tbody');
+  var rows = Array.from(tbody.querySelectorAll('tr'));
+  // Skip empty rows
+  if(!rows.length || rows[0].querySelector('.empty')) return;
+  var dir = header.classList.contains('asc') ? 'desc' : 'asc';
+  table.querySelectorAll('th.sort').forEach(function(h){ h.classList.remove('asc','desc'); });
+  header.classList.add(dir);
+  rows.sort(function(a,b){
+    var va = (a.cells[colIdx]||{}).textContent||'';
+    var vb = (b.cells[colIdx]||{}).textContent||'';
+    if(type==='num'){
+      var na=parseFloat(va.replace(/[^0-9.]/g,''));
+      var nb=parseFloat(vb.replace(/[^0-9.]/g,''));
+      if(!isNaN(na)&&!isNaN(nb)) return dir==='asc'?na-nb:nb-na;
+    }
+    return dir==='asc'?va.localeCompare(vb):vb.localeCompare(va);
+  });
+  rows.forEach(function(r){ tbody.appendChild(r); });
+}
+</script>
+
+</body>
+</html>

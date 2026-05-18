@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Survey — Pilih Kantor</title>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+<style>
+body { background:#f1f5f9; font-family:system-ui; margin:0; padding:1rem; }
+.card { max-width:600px; margin:2rem auto; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,.08); }
+h3 { color:#1e293b; margin-bottom:1rem; }
+/* Status indicator strip */
+.stat-belum { border-left:4px solid #94a3b8 !important; }
+.stat-belum:hover { background:#f8fafc !important; border-left-color:#94a3b8 !important; }
+.stat-draft { border-left:4px solid #eab308 !important; background:#fefce8 !important; }
+.stat-draft:hover { background:#fef9c3 !important; border-left-color:#eab308 !important; }
+.stat-submit { border-left:4px solid #22c55e !important; background:#f0fdf4 !important; }
+.stat-submit:hover { background:#dcfce7 !important; border-left-color:#22c55e !important; }
+.stat-draft-other { border-left:4px solid #f97316 !important; background:#fff7ed !important; cursor:default !important; }
+.stat-draft-other:hover { background:#fff7ed !important; }
+.stat-badge { font-size:.6rem; padding:2px 6px; border-radius:4px; white-space:nowrap; }
+.badge-belum { background:#e2e8f0; color:#475569; }
+.top-bar { background:#0f172a; color:#e2e8f0; padding:.7rem 1rem; display:flex; justify-content:space-between; align-items:center; font-size:.85rem; }
+.nav-link { color:#93c5fd; text-decoration:none; font-size:.8rem; padding:.25rem .5rem; border-radius:4px; }
+.nav-link:hover { background:rgba(255,255,255,.1); color:#fff; }
+.badge-submit { background:#bbf7d0; color:#166534; }
+.badge-other { background:#fed7aa; color:#9a3412; }
+.list-group-item { cursor:pointer; transition:all .15s; }
+.list-group-item.disabled-item { opacity:.7; pointer-events:none; }
+.skor-label { font-size:.65rem; color:#64748b; }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <div style="display:flex;align-items:center;gap:1rem">
+    <strong>📋 Survey Kondisi Kantor</strong>
+    {% for m in menu_items %}
+    <a href="{{ m.url }}" class="nav-link">{{ m.icon }} {{ m.label }}</a>
+    {% endfor %}
+  </div>
+  <div style="display:flex;align-items:center;gap:.8rem">
+    <span style="font-size:.8rem;color:#93c5fd">👤 {{ user_name }}</span>
+    <a href="/api/logout" class="nav-link" style="color:#fca5a5">Keluar</a>
+  </div>
+</div>
+
+<div class="card p-4">
+  <h3><i class="fas fa-check-circle text-success"></i> Ceklist Kantor</h3>
+  <p class="text-muted small">Pilih kantor untuk diisi survey kondisi kantor nya:</p>
+
+  <!-- Legenda -->
+  <div class="d-flex gap-3 mb-3 flex-wrap" style="font-size:.7rem;">
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#94a3b8;"></span> Belum dinilai</span>
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#eab308;"></span> Sedang dikerjakan</span>
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#22c55e;"></span> Selesai (submitted)</span>
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f97316;"></span> Digarap user lain 🔒</span>
+  </div>
+
+  <div class="list-group">
+    {% for k in kantor_list %}
+    {% set wf = k.get('workflow', '') %}
+
+    {% if wf == 'draft' and k.get('pic','') != '' and k.get('pic','') != user_id_pic and not k.get('expired_pic') %}
+      {% set is_other_draft = true %}
+    {% else %}
+      {% set is_other_draft = false %}
+    {% endif %}
+
+    {% if wf == 'draft_expired' %}
+      {% set status_class = 'stat-belum' %}
+      {% set badge_text = '⏰ Draft expired (' + (k.get('expired_ago','?')|string) + 'm lalu)' %}
+      {% set badge_class = 'badge-draft' %}
+      {% set click_action = '' %}
+    {% elif wf == 'submitted' or wf == 'final' %}
+      {% set status_class = 'stat-submit' %}
+      {% set badge_text = '✅ Selesai' %}
+      {% set badge_class = 'badge-submit' %}
+      {% set click_action = 'onclick="return warningAlreadySubmitted()"' %}
+    {% elif is_other_draft %}
+      {% set status_class = 'stat-draft-other' %}
+      {% set badge_text = '🔒 Digarap ' + k.get('pic','') %}
+      {% set badge_class = 'badge-other' %}
+      {% set click_action = '' %}
+    {% elif wf == 'draft' %}
+      {% set status_class = 'stat-draft' %}
+      {% set badge_text = '✏️ Draft' %}
+      {% set badge_class = 'badge-draft' %}
+      {% set click_action = '' %}
+    {% else %}
+      {% set status_class = 'stat-belum' %}
+      {% set badge_text = '⬜ Belum' %}
+      {% set badge_class = 'badge-belum' %}
+      {% set click_action = '' %}
+    {% endif %}
+
+    <a href="/survey/kantor-checklist/form/{{ k.node_code }}"
+       class="list-group-item list-group-item-action d-flex justify-content-between align-items-center {{ status_class }} {{ 'disabled-item' if is_other_draft else '' }}"
+       {{ click_action | safe }}>
+      <div>
+        <div><strong>{{ k.node_code }}</strong> — {{ k.display_name }}</div>
+        {% if k.get('skor_pct') is not none %}
+        <div class="skor-label">Skor: {{ '%.1f'|format(k.skor_pct) }}%</div>
+        {% endif %}
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <span class="stat-badge {{ badge_class }}">{{ badge_text }}</span>
+        {% if is_other_draft %}
+        <i class="fas fa-lock text-muted"></i>
+        {% else %}
+        <i class="fas fa-chevron-right text-muted"></i>
+        {% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+
+  {% if not kantor_list %}
+  <div class="alert alert-warning">Tidak ada data kantor.</div>
+  {% endif %}
+</div>
+
+<script>
+function warningAlreadySubmitted() {
+  var msg = '⚠️ Survey kantor ini sudah selesai (submitted).\n\n' +
+            'Klik OK untuk melihat hasil dalam mode read-only.\n' +
+            'Hasil tidak bisa diubah setelah disubmit.';
+  return confirm(msg);
+}
+
+// Konfirmasi untuk draft milik user lain — blok via disabled-item,
+// tapi kalo user paksa klik langsung dari URL, bakal kena conflict mode di form.
+</script>
+</body>
+</html>
