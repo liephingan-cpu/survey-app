@@ -47,18 +47,18 @@ def _get_kurs() -> float:
 
 def _save_usage(kantor_code: str, item_idx: int, item_label: str, model: str,
                 input_tokens: int, output_tokens: int, img_size_kb: int,
-                cost_idr: int, relevan: bool, saran: str):
+                cost_idr: int, relevan: bool, saran: str, deskripsi: str = ""):
     """Log pemakaian ke DB."""
     try:
         conn_log = get_db(); cur_log = conn_log.cursor()
         cur_log.execute(
             """INSERT INTO origo.survey_ai_usage
                (kantor_code, item_idx, item_label, model, input_tokens, output_tokens,
-                image_count, image_size_kb, estimated_cost_idr, relevan, saran)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                image_count, image_size_kb, estimated_cost_idr, relevan, saran, deskripsi)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (kantor_code, item_idx, item_label, model,
              input_tokens, output_tokens, 1, img_size_kb, cost_idr,
-             relevan, saran[:500]))
+             relevan, saran[:500], deskripsi[:300]))
         conn_log.commit(); cur_log.close(); conn_log.close()
     except Exception as e:
         pass  # log failure bukan failure fatal
@@ -127,7 +127,8 @@ def _analisa_foto_gemini_direct(img_bytes: bytes, item_label: str, item_cat: str
 
     _save_usage(kantor_code, item_idx, item_label, _ANALISA_GEMINI_MODEL,
                 input_tokens, output_tokens, img_size_kb, cost_idr,
-                result_data.get("relevan", True), result_data.get("saran", ""))
+                result_data.get("relevan", True), result_data.get("saran", ""),
+                result_data.get("deskripsi", ""))
     return result_data
 
 
@@ -182,7 +183,8 @@ def _analisa_foto_blackbox(img_bytes: bytes, item_label: str, item_cat: str, kan
 
     _save_usage(kantor_code, item_idx, item_label, _ANALISA_BLACKBOX_MODEL,
                 input_tokens, output_tokens, img_size_kb, cost_idr,
-                result_data.get("relevan", True), result_data.get("saran", ""))
+                result_data.get("relevan", True), result_data.get("saran", ""),
+                result_data.get("deskripsi", ""))
     return result_data
 
 
@@ -192,12 +194,12 @@ def _buat_prompt(item_label: str, item_cat: str) -> str:
     return f"""\
 Foto ini adalah dokumentasi survey kantor untuk item: [{item_cat}] {item_label}
 
-Analisa apakah foto ini relevan dengan item tersebut.
-Jawab dalam JSON (hanya JSON, tanpa markdown):
+Tugas: Deskripsikan APA yang terlihat di foto, fokus pada detail relevan dengan pernyataan item di atas.
+Contoh: parkir sebut jumlah kendaraan, toilet sebut kebersihan, CCTV sebut kondisi, papan/tanda sebut visibilitas.
+
+Jawab JSON (hanya JSON, tanpa markdown):
 {{
-  "deskripsi": "deskripsi singkat apa yang terlihat (1 kalimat, Bahasa Indonesia)",
-  "relevan": true,
-  "saran": ""
+  "deskripsi": "deskripsi fokus pada detail pernyataan (1-2 kalimat, Bahasa Indonesia)"
 }}
 """
 
@@ -747,6 +749,59 @@ async def api_submit(request: Request, session: Optional[str] = Cookie(None)):
         return {"ok": True, "id": row[0] if row else None}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+    # ── Update saran AI berdasarkan deskripsi foto untuk item yang sudah disubmit ──
+    if workflow_status == "submitted":
+        try:
+            _DEEPSEEK_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+            if not _DEEPSEEK_KEY:
+                try:
+                    with open(os.path.expanduser("~/origo_bots/.env")) as f:
+                        for l in f:
+                            if l.startswith("DEEPSEEK_API_KEY="):
+                                _DEEPSEEK_KEY = l.split("=",1)[1].strip().strip("'\" \n")
+                                break
+                except: pass
+
+            conn_s = get_db(); cur_s = conn_s.cursor()
+            for i, s in enumerate(status_data):
+                try: sv = int(s.get("status", -1))
+                except: sv = -1
+
+                cur_s.execute(
+                    "SELECT id, deskripsi FROM origo.survey_ai_usage WHERE kantor_code = %s AND item_idx = %s ORDER BY created_at DESC LIMIT 1",
+                    (kantor_code, i))
+                ai_row = cur_s.fetchone()
+                if not ai_row: continue
+
+                ai_id = ai_row[0]
+                deskripsi = ai_row[1] or ""
+
+                if sv == 0:
+                    saran_baru = "Sudah sesuai standar."
+                elif sv > 0 and deskripsi and not deskripsi.startswith("(") and _DEEPSEEK_KEY:
+                    try:
+                        label = dbitems[i].get("label", "") if i < len(dbitems) else ""
+                        prompt = f"Item survey: {label}\nDeskripsi foto: {deskripsi}\nPilihan user: status = {sv} (ada masalah/rusak)\n\nTugas: Berikan 1-2 kalimat saran perbaikan dokumentasi agar sesuai dengan pernyataan item. Jika dari deskripsi sudah sesuai, tulis \"Sudah sesuai standar.\""
+                        r = httpx.post("https://api.deepseek.com/chat/completions", json={
+                            "model": "deepseek-chat",
+                            "messages": [{"role": "user", "content": prompt}],
+                            "max_tokens": 200, "temperature": 0.1
+                        }, headers={"Authorization": f"Bearer {_DEEPSEEK_KEY}", "Content-Type": "application/json"}, timeout=15)
+                        if r.status_code == 200:
+                            saran_baru = r.json()["choices"][0]["message"]["content"][:500]
+                        else:
+                            saran_baru = f"(gagal: HTTP {r.status_code})"
+                    except Exception as e:
+                        saran_baru = f"(error: {str(e)[:50]})"
+                else:
+                    continue
+
+                cur_s.execute("UPDATE origo.survey_ai_usage SET saran = %s WHERE id = %s", (saran_baru, ai_id))
+
+            conn_s.commit(); cur_s.close(); conn_s.close()
+        except Exception as e:
+            pass
 
 # ── Dashboard ──
 # Fungsi helper - ambil items dari DB
@@ -4093,11 +4148,19 @@ async def item_evidence_api(request: Request):
                     "model": ai_row[2] or ""
                 }
             
+            # Fix video_path: kalau cuma nama file, tambah path
+            _vp = (item_data.get("video_path", "") or "").strip()
+            if _vp and not _vp.startswith("/survey/uploads/") and not _vp.startswith("http"):
+                _vp = f"/survey/uploads/{_vp}"
+            _fp = (item_data.get("foto", "") or "").strip()
+            if _fp and not _fp.startswith("/survey/uploads/") and not _fp.startswith("http"):
+                _fp = f"/survey/uploads/{_fp}"
+
             results.append({
                 "kantor_code": str(kantor_code),
                 "kantor_nama": kantor_nama or "",
-                "foto": item_data.get("foto", ""),
-                "video_path": item_data.get("video_path", ""),
+                "foto": _fp,
+                "video_path": _vp,
                 "note": item_data.get("note", ""),
                 "pic": str(pic or ""),
                 "tgl_cek": str(tgl_cek or ""),

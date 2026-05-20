@@ -271,7 +271,7 @@ function uploadFile(idx, blob) {
             }
             var btn = document.querySelector('.cam-btn[data-idx="' + idx + '"]');
             if (btn) { btn.textContent = '✅ Foto OK'; btn.disabled = false; btn.style.opacity = '1'; btn.style.background = '#f0fdf4'; btn.style.borderColor = '#16a34a'; btn.style.color = '#16a34a'; }
-            // Tampilkan deskripsi foto dari Gemini
+            // Tampilkan hasil analisa AI
             var descEl = document.getElementById('foto-desc-' + idx);
             if (descEl && d.foto_desc) {
               descEl.innerHTML = d.foto_desc;
