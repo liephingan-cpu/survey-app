@@ -672,7 +672,7 @@ function renderEvidence(d, content, title) {
       const relevanIcon = ev.ai.relevan ? '✅' : '⚠️';
       const relevanColor = ev.ai.relevan ? '#16a34a' : '#ca8a04';
       html += `<div style="font-size:.6rem;background:#f1f5f9;border-radius:4px;padding:4px 6px;">
-        <span style="color:${relevanColor};">${relevanIcon} AI (${ev.ai.model}):</span>
+        <span style="color:${relevanColor};">${relevanIcon} AI:</span>
         <span style="color:#334155;">${ev.ai.saran.substring(0, 200)}</span>
       </div>`;
     }

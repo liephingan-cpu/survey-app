@@ -4132,7 +4132,7 @@ async def item_evidence_api(request: Request):
             # Get AI analysis
             cur2 = conn.cursor()
             cur2.execute(
-                """SELECT saran, relevan, model, created_at FROM origo.survey_ai_usage
+                """SELECT saran, relevan FROM origo.survey_ai_usage
                    WHERE kantor_code = %s AND item_idx = %s
                    ORDER BY created_at DESC LIMIT 1""",
                 (kantor_code, item_idx)
@@ -4144,8 +4144,7 @@ async def item_evidence_api(request: Request):
             if ai_row:
                 ai_info = {
                     "saran": ai_row[0] or "",
-                    "relevan": ai_row[1] if ai_row[1] is not None else True,
-                    "model": ai_row[2] or ""
+                    "relevan": ai_row[1] if ai_row[1] is not None else True
                 }
             
             # Fix video_path: kalau cuma nama file, tambah path
