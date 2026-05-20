@@ -29,3 +29,15 @@ Thumbs.db
 
 # Debug
 debug_*.html
+*.bak
+*.pyc
+__pycache__/
+static/reports/*_old.png
+*.old_bak
+backup_*.sql
+submitted_report.png
+ongoing_report.png
+belum_dibuat_report.png
+checklist3.py
+checklist_backup.py
+backup_before_migration_20260518.sql

@@ -50,7 +50,7 @@ img.auto-orient { max-height:100px;object-fit:contain;background:#f1f5f9;border-
     {% endfor %}
   </div>
   <div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;">
-    <span style="font-size:.8rem;color:#93c5fd">👤 {{ user_name }}</span>
+    <span style="font-size:.8rem;color:#93c5fd;font-weight:500;" class="user-info">Halo, {{ user_name }} <span style="color:#94a3b8;font-size:.7rem;">| {{ user_role|default('') }}</span></span>
     <a href="/api/logout" class="nav-link" style="color:#fca5a5">Keluar</a>
   </div>
 </div>
@@ -90,11 +90,53 @@ img.auto-orient { max-height:100px;object-fit:contain;background:#f1f5f9;border-
 
 <!-- no separate best/worst strip — merged into Per Item tab -->
 
+<!-- ── Feature #2: Area Summary Card ── -->
+{% if area_summaries %}
+<div style="background:white;border-radius:10px;padding:10px;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:8px;" class="area-summary">
+  <div style="font-size:.8rem;font-weight:600;color:#0f172a;margin-bottom:6px;">📋 Ringkasan per Area</div>
+  {% for area in area_summaries %}
+  <div style="margin:3px 0;padding:4px 0;">
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span style="color:#64748b;font-size:.65rem;">├──</span>
+      <span style="font-size:.7rem;font-weight:600;color:#0f172a;">{{ area.area_name }} ({{ area.area_code }})</span>
+      <span style="font-size:.7rem;font-weight:700;{% if area.avg_score is not none %}{% if area.avg_score >= 80 %}color:#166534;background:#dcfce7{% elif area.avg_score >= 60 %}color:#854d0e;background:#fef9c3{% else %}color:#991b1b;background:#fee2e2{% endif %}{% else %}color:#64748b;background:#f1f5f9{% endif %};padding:1px 6px;border-radius:4px;">{{ "%.1f"|format(area.avg_score) }}{% if area.avg_score is not none %}%{% else %}—{% endif %}</span>
+      <span style="font-size:.6rem;color:#64748b;">— {{ area.total }} cabang {% if area.submitted == area.total %}✅{% endif %}</span>
+    </div>
+    {% for wil in area.wilayahs %}
+    <div style="display:flex;align-items:center;gap:6px;margin-left:18px;">
+      <span style="color:#cbd5e1;font-size:.65rem;">├──</span>
+      <span style="font-size:.65rem;color:#475569;">{{ wil.wilayah_name }} ({{ wil.wilayah_code }})</span>
+      <span style="font-size:.65rem;font-weight:600;{% if wil.avg_score is not none %}{% if wil.avg_score >= 80 %}color:#166534{% elif wil.avg_score >= 60 %}color:#854d0e{% else %}color:#991b1b{% endif %}{% else %}color:#64748b{% endif %};">{{ "%.1f"|format(wil.avg_score) }}{% if wil.avg_score is not none %}%{% else %}—{% endif %}</span>
+      <span style="font-size:.6rem;color:#94a3b8;">— {{ wil.total }} cabang</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ── Feature #3: PIC Activity Card (replaces Findings) ── -->
+{% if pic_activities %}
+<div style="background:white;border-radius:10px;padding:10px;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:8px;" class="pic-activity-card">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+    <div style="font-size:.8rem;font-weight:600;color:#0f172a;">👥 Aktivitas Surveyor</div>
+    <span style="font-size:.6rem;color:#94a3b8;">{{ pic_activities|length }} PIC</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;font-size:.7rem;">
+    <div style="padding:4px 6px;">🟢 Sedang isi: <strong style="color:#16a34a;">{{ active_pic_count }}</strong> orang</div>
+    <div style="padding:4px 6px;">📋 Draft: <strong style="color:#ca8a04;">{{ draft_count }}</strong> survei</div>
+    <div style="padding:4px 6px;">✅ Selesai hari ini: <strong style="color:#16a34a;">{{ today_submit_count }}</strong> survei</div>
+    <div style="padding:4px 6px;">👤 Total surveyor: <strong style="color:#0f172a;">{{ total_pic }}</strong> orang</div>
+  </div>
+</div>
+{% endif %}
+
 <div class="tab-bar">
   <div class="tab-btn active" data-tab="item">Per Item</div>
   <div class="tab-btn" data-tab="branch">Per Cabang</div>
   <div class="tab-btn" data-tab="foto">📸 Dokumentasi</div>
   <div class="tab-btn" data-tab="progress">📈 Progress</div>
+  <div class="tab-btn" data-tab="pic">👥 PIC</div>
   {% if user_id == '17012956' %}<div class="tab-btn" data-tab="session">Semua Session</div>{% endif %}
 </div>
 
@@ -114,27 +156,33 @@ img.auto-orient { max-height:100px;object-fit:contain;background:#f1f5f9;border-
 {% for it in problem_items %}{% set sum_score.val = sum_score.val + it.avg_score %}{% endfor %}
 {% set rata_nasional = (sum_score.val / total_item)|round(1) if total_item > 0 else 0 %}
 
-<!-- Section 1: Scorecard -->
+<!-- Section 1: Scorecard with colored backgrounds -->
 <div class="summary-grid" style="margin-bottom:8px;">
-  <div class="dash-card">
-    <h3>🔴 Zona Merah</h3>
-    <div class="num red">{{ ns.merah }}</div>
-    <div class="note">&lt; 60%</div>
+  {% set merah_cls = 'bg-red' %}
+  {% set kuning_cls = 'bg-yellow' %}
+  {% set hijau_cls = 'bg-green' %}
+  {% set rata_score = rata_nasional %}
+  {% set rata_cls = 'bg-green' if rata_score >= 80 else 'bg-yellow' if rata_score >= 60 else 'bg-red' %}
+  {% if ns.merah <= 0 and ns.kuning <= 0 and ns.hijau <= 0 %}{% set rata_cls = 'bg-gray' %}{% endif %}
+  <div class="dash-card {% if ns.merah > 0 %}bg-red{% else %}bg-gray{% endif %}" style="background:{% if ns.merah > 0 %}#fee2e2{% else %}#f1f5f9{% endif %}!important;">
+    <h3 style="color:{% if ns.merah > 0 %}#991b1b{% else %}#64748b{% endif %};">🔴 Zona Merah</h3>
+    <div class="num" style="font-size:1.6rem;font-weight:800;color:{% if ns.merah > 0 %}#991b1b{% else %}#64748b{% endif %};">{{ ns.merah }}</div>
+    <div class="note" style="color:{% if ns.merah > 0 %}#991b1b{% else %}#64748b{% endif %};">&lt; 60%</div>
   </div>
-  <div class="dash-card">
-    <h3>🟡 Zona Kuning</h3>
-    <div class="num yellow">{{ ns.kuning }}</div>
-    <div class="note">60-80%</div>
+  <div class="dash-card" style="background:{% if ns.kuning > 0 %}#fef9c3{% else %}#f1f5f9{% endif %}!important;">
+    <h3 style="color:{% if ns.kuning > 0 %}#854d0e{% else %}#64748b{% endif %};">🟡 Zona Kuning</h3>
+    <div class="num" style="font-size:1.6rem;font-weight:800;color:{% if ns.kuning > 0 %}#854d0e{% else %}#64748b{% endif %};">{{ ns.kuning }}</div>
+    <div class="note" style="color:{% if ns.kuning > 0 %}#854d0e{% else %}#64748b{% endif %};">60-80%</div>
   </div>
-  <div class="dash-card">
-    <h3>🟢 Zona Hijau</h3>
-    <div class="num green">{{ ns.hijau }}</div>
-    <div class="note">&gt; 80%</div>
+  <div class="dash-card" style="background:{% if ns.hijau > 0 %}#dcfce7{% else %}#f1f5f9{% endif %}!important;">
+    <h3 style="color:{% if ns.hijau > 0 %}#166534{% else %}#64748b{% endif %};">🟢 Zona Hijau</h3>
+    <div class="num" style="font-size:1.6rem;font-weight:800;color:{% if ns.hijau > 0 %}#166534{% else %}#64748b{% endif %};">{{ ns.hijau }}</div>
+    <div class="note" style="color:{% if ns.hijau > 0 %}#166534{% else %}#64748b{% endif %};">&gt; 80%</div>
   </div>
-  <div class="dash-card">
-    <h3>📊 Rata² Nasional</h3>
-    <div class="num">{{ "%.1f"|format(rata_nasional) }}%</div>
-    <div class="note">{{ total_item }} item dinilai</div>
+  <div class="dash-card" style="background:{% if rata_score is not none and rata_score > 0 %}{% if rata_score >= 80 %}#dcfce7{% elif rata_score >= 60 %}#fef9c3{% else %}#fee2e2{% endif %}{% else %}#f1f5f9{% endif %}!important;">
+    <h3 style="color:{% if rata_score is not none and rata_score > 0 %}{% if rata_score >= 80 %}#166534{% elif rata_score >= 60 %}#854d0e{% else %}#991b1b{% endif %}{% else %}#64748b{% endif %};">📊 Rata² Nasional</h3>
+    <div class="num" style="font-size:1.6rem;font-weight:800;color:{% if rata_score is not none and rata_score > 0 %}{% if rata_score >= 80 %}#166534{% elif rata_score >= 60 %}#854d0e{% else %}#991b1b{% endif %}{% else %}#64748b{% endif %};">{{ "%.1f"|format(rata_nasional) }}%</div>
+    <div class="note" style="color:{% if rata_score is not none and rata_score > 0 %}{% if rata_score >= 80 %}#166534{% elif rata_score >= 60 %}#854d0e{% else %}#991b1b{% endif %}{% else %}#64748b{% endif %};">{{ total_item }} item dinilai</div>
   </div>
 </div>
 
@@ -331,6 +379,52 @@ img.auto-orient { max-height:100px;object-fit:contain;background:#f1f5f9;border-
     </div>
   </div>
   <div style="margin-top:8px;font-size:.6rem;color:#94a3b8;">📌 Klik gambar untuk lihat besar. Laporan statis — refresh manual untuk update.</div>
+</div>
+</div>
+
+<!-- ── Tab PIC Activity (replaces Temuan/Findings) ── -->
+<div class="tab-panel" id="tab-pic" style="display:none">
+<div style="background:white;border-radius:10px;padding:10px;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:8px;">
+  <div style="font-size:.85rem;font-weight:600;color:#0f172a;">👥 Aktivitas PIC Realtime</div>
+  <div style="font-size:.7rem;color:#64748b;margin-bottom:8px;">Status terkini surveyor berdasarkan aktivitas terakhir. 🟡 isi = mengisi form &lt; 30 menit lalu, 💤 tidur = draft &gt; 1 jam idle.</div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+    <input id="pic-search" placeholder="Cari PIC / kantor..." style="padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:.72rem;background:white;color:#334155;flex:1;min-width:120px;outline:none;">
+    <select id="pic-filter-status" style="padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:.72rem;background:white;color:#334155;">
+      <option value="">Semua Status</option>
+      <option value="🟡 isi">🟡 Sedang Isi</option>
+      <option value="💤 tidur">💤 Tidur</option>
+      <option value="✅ kirim">✅ Selesai</option>
+    </select>
+    <span id="pic-count" style="font-size:.68rem;color:#64748b;align-self:center;"></span>
+  </div>
+</div>
+<div style="overflow-x:auto;">
+<table class="item-table" id="pic-table">
+<thead><tr>
+  <th class="sort" onclick="sortT(this,0,'str')">PIC</th>
+  <th class="sort" onclick="sortT(this,1,'str')">Kantor</th>
+  <th class="sort" onclick="sortT(this,2,'str')">Status</th>
+  <th class="sort" onclick="sortT(this,3,'str')">Sejak</th>
+  <th class="sort" onclick="sortT(this,4,'str')">Idle</th>
+  <th class="sort" onclick="sortT(this,5,'num')">Hari Ini</th>
+</tr></thead>
+<tbody>
+{% if pic_activities %}
+{% for p in pic_activities %}
+<tr>
+  <td style="font-weight:600;">{{ p.pic }}</td>
+  <td>{{ p.kantor_code }}<br><span style="font-size:.6rem;color:#94a3b8;">{{ p.kantor_label[:20] }}{% if p.kantor_label|length > 20 %}...{% endif %}</span></td>
+  <td>{{ p.status }}</td>
+  <td>{{ p.sejak }}</td>
+  <td>{{ p.idle }}</td>
+  <td style="text-align:center;">{{ p.today_count }}</td>
+</tr>
+{% endfor %}
+{% else %}
+<tr><td colspan="6" class="empty">📭 Belum ada data PIC</td></tr>
+{% endif %}
+</tbody>
+</table>
 </div>
 </div>
 
@@ -845,6 +939,43 @@ function initSessionFilter() {
 }
 
 document.addEventListener('DOMContentLoaded', initSessionFilter);
+
+// ── PIC Activity filter (Tab PIC) ──
+function filterPicTable() {
+  var q = (document.getElementById('pic-search').value || '').toLowerCase();
+  var statusVal = document.getElementById('pic-filter-status').value;
+  var tbody = document.querySelector('#pic-table tbody');
+  if(!tbody) return;
+  var rows = tbody.querySelectorAll('tr');
+  var vis = 0;
+  rows.forEach(function(row){
+    if(row.classList.contains('empty')) return;
+    var cells = row.querySelectorAll('td');
+    if(cells.length < 6) return;
+    var pic = (cells[0].textContent || '').toLowerCase();
+    var kantor = (cells[1].textContent || '').toLowerCase();
+    var status = (cells[2].textContent || '').trim();
+    var show = true;
+    if(q && pic.indexOf(q) < 0 && kantor.indexOf(q) < 0) show = false;
+    if(statusVal && status.indexOf(statusVal) < 0) show = false;
+    row.style.display = show ? '' : 'none';
+    if(show) vis++;
+  });
+  var cnt = document.getElementById('pic-count');
+  if(cnt) cnt.textContent = vis + ' dari ' + rows.length + ' PIC';
+}
+
+// Init PIC filter
+function initPicFilter() {
+  var searchEl = document.getElementById('pic-search');
+  var statusEl = document.getElementById('pic-filter-status');
+  if(!searchEl || !statusEl) return;
+  searchEl.addEventListener('input', filterPicTable);
+  statusEl.addEventListener('change', filterPicTable);
+  filterPicTable();
+}
+
+document.addEventListener('DOMContentLoaded', initPicFilter);
 
 // Sort function: pure vanilla, no framework
 function sortT(header, colIdx, type) {

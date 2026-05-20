@@ -1300,7 +1300,172 @@ async def survey_dashboard(request: Request, session: Optional[str] = Cookie(Non
 
     import json
     item_kantors_json_str = json.dumps(kantor_breakdown, default=str)
-    return TemplateResponse("survey_dashboard.html", {"request": request, "user_id": user["user_id"], "user_name": user["fullname"], "fullname": user["fullname"], "fullname": user["fullname"], "user_role": user.get("role",""), "current_path": "/survey/kantor-checklist/dashboard", "total_branches": total_branches, "done_main": done_main, "done_submit": done_submit, "done_draft": done_draft, "done_mt": done_mt, "merged": merged, "top5": top5, "worst5": worst5, "problem_items": problem_items, "best_items": best_items, "worst_items": worst_items, "terbaru": latest, "merged_with_score": mws, "scores_list": sl, "draft_list": dr, "avg_dur": avg_dur, "avg_main": avg_main, "k": ctl, "v": ctl, "cat_names": ctl, "all_sessions": all_sessions, "menu_items": _get_menu(), "foto_warnings": foto_warnings_list, "foto_referensi": foto_referensi, "db_items_ref": dbi_fw, "item_kantors_json": item_kantors_json_str, "trend_icon": trend_icon})
+
+    # ── Feature #2: Area/Wilayah Summaries ──
+    area_summaries = []
+    try:
+        from collections import defaultdict
+        area_groups = defaultdict(lambda: {"area_code": "?", "area_name": "?", "branches": [], "scores": [], "submitted": 0, "total": 0})
+        wilayah_groups = defaultdict(lambda: {"area_code": "?", "area_name": "?", "wilayah_code": "?", "wilayah_name": "?", "branches": [], "scores": [], "submitted": 0, "total": 0})
+        for m in mws:
+            ac = m.get("area_code", "?")
+            an = m.get("area_name", "?")
+            wc = m.get("wilayah_code", "?")
+            wn = m.get("wilayah_name", "?")
+            sc = m.get("main")
+            wk = f"{ac}>{wc}"
+            # Area
+            area_groups[ac]["area_code"] = ac
+            area_groups[ac]["area_name"] = an
+            area_groups[ac]["total"] += 1
+            if sc is not None:
+                area_groups[ac]["scores"].append(sc)
+                if m.get("main_workflow") in ("submitted", "final"):
+                    area_groups[ac]["submitted"] += 1
+            # Wilayah
+            wilayah_groups[wk]["area_code"] = ac
+            wilayah_groups[wk]["area_name"] = an
+            wilayah_groups[wk]["wilayah_code"] = wc
+            wilayah_groups[wk]["wilayah_name"] = wn
+            wilayah_groups[wk]["total"] += 1
+            if sc is not None:
+                wilayah_groups[wk]["scores"].append(sc)
+                if m.get("main_workflow") in ("submitted", "final"):
+                    wilayah_groups[wk]["submitted"] += 1
+        # Build area summaries with nested wilayah
+        for ac in sorted(area_groups.keys()):
+            ag = area_groups[ac]
+            wilayah_list = []
+            for wk in sorted(wilayah_groups.keys()):
+                wg = wilayah_groups[wk]
+                if wg["area_code"] == ac:
+                    avg_w = round(sum(wg["scores"]) / len(wg["scores"]), 1) if wg["scores"] else None
+                    wilayah_list.append({
+                        "wilayah_code": wg["wilayah_code"],
+                        "wilayah_name": wg["wilayah_name"],
+                        "total": wg["total"],
+                        "submitted": wg["submitted"],
+                        "avg_score": avg_w,
+                    })
+            avg_a = round(sum(ag["scores"]) / len(ag["scores"]), 1) if ag["scores"] else None
+            pct_a = round(ag["submitted"] / ag["total"] * 100, 1) if ag["total"] > 0 else 0
+            area_summaries.append({
+                "area_code": ac,
+                "area_name": ag["area_name"],
+                "total": ag["total"],
+                "submitted": ag["submitted"],
+                "avg_score": avg_a,
+                "pct_complete": pct_a,
+                "wilayahs": wilayah_list,
+            })
+    except Exception:
+        pass
+
+    # ── Feature #3: PIC Activity Stats (replaced findings_list) ──
+    pic_activities = []
+    active_pic_count = 0
+    draft_count = 0
+    today_submit_count = 0
+    total_pic = 0
+    try:
+        conn_pic = get_db(); cur_pic = conn_pic.cursor()
+        cur_pic.execute("""
+            SELECT kd.pic,
+                   kd.kantor_code,
+                   kd.kantor_label,
+                   kd.workflow_status,
+                   GREATEST(COALESCE(kd.updated_at, '1970-01-01'::timestamp),
+                            COALESCE(kd.submitted_at, '1970-01-01'::timestamp)) as last_activity,
+                   (SELECT COUNT(*) FROM origo.kantor_checklist_data kd2
+                    WHERE kd2.pic = kd.pic AND DATE(kd2.submitted_at) = CURRENT_DATE) as today_count
+            FROM origo.kantor_checklist_data kd
+            WHERE kd.pic IS NOT NULL AND kd.pic != ''
+            ORDER BY last_activity DESC
+        """)
+        now_pic = datetime.now()
+        seen_pics = set()
+        unique_pics = set()
+        for r in cur_pic.fetchall():
+            pic_id = r[0]
+            kantor_code = r[1]
+            kantor_label = r[2]
+            workflow = r[3]
+            last_act = r[4]
+            today_cnt = r[5]
+
+            unique_pics.add(pic_id)
+
+            if workflow == 'draft':
+                draft_count += 1
+
+            if workflow == 'submitted':
+                today_submit_count += 1
+
+            # Avoid duplicates: only first (most recent) row per PIC
+            if pic_id in seen_pics:
+                continue
+            seen_pics.add(pic_id)
+
+            # Classify status
+            if workflow == 'submitted':
+                status = '✅ kirim'
+            elif last_act and (now_pic - last_act).total_seconds() < 1800:  # < 30 min
+                status = '🟡 isi'
+                active_pic_count += 1
+            else:
+                status = '💤 tidur'
+
+            # Idle time
+            idle_hours = None
+            idle_display = ''
+            if last_act and workflow == 'draft':
+                idle_sec = int((now_pic - last_act).total_seconds())
+                if idle_sec < 60:
+                    idle_display = f'{idle_sec} detik'
+                elif idle_sec < 3600:
+                    idle_display = f'{idle_sec // 60} menit'
+                elif idle_sec < 86400:
+                    idle_display = f'{idle_sec // 3600} jam'
+                else:
+                    idle_display = f'{idle_sec // 86400} hari'
+                idle_hours = round(idle_sec / 3600, 1)
+            elif workflow == 'submitted':
+                idle_display = '-'
+
+            # Since display
+            sejak_display = ''
+            if last_act:
+                diff_sec = int((now_pic - last_act).total_seconds())
+                if diff_sec < 60:
+                    sejak_display = 'baru saja'
+                elif diff_sec < 3600:
+                    sejak_display = f'{diff_sec // 60} menit'
+                elif diff_sec < 86400:
+                    sejak_display = last_act.strftime('%H:%M')
+                else:
+                    sejak_display = last_act.strftime('%d/%m %H:%M')
+
+            pic_activities.append({
+                'pic': pic_id,
+                'kantor_code': kantor_code,
+                'kantor_label': kantor_label,
+                'status': status,
+                'workflow': workflow,
+                'sejak': sejak_display,
+                'idle': idle_display,
+                'idle_hours': idle_hours,
+                'today_count': today_cnt,
+                'last_activity': last_act,
+            })
+
+        total_pic = len(unique_pics)
+        cur_pic.close(); conn_pic.close()
+    except Exception as e:
+        print(f"[PIC Activity] Error: {e}")
+        import traceback
+        traceback.print_exc()
+
+    return TemplateResponse("survey_dashboard.html", {"request": request, "user_id": user["user_id"], "user_name": user["fullname"], "fullname": user["fullname"], "fullname": user["fullname"], "user_role": user.get("role",""), "current_path": "/survey/kantor-checklist/dashboard", "total_branches": total_branches, "done_main": done_main, "done_submit": done_submit, "done_draft": done_draft, "done_mt": done_mt, "merged": merged, "top5": top5, "worst5": worst5, "problem_items": problem_items, "best_items": best_items, "worst_items": worst_items, "terbaru": latest, "merged_with_score": mws, "scores_list": sl, "draft_list": dr, "avg_dur": avg_dur, "avg_main": avg_main, "k": ctl, "v": ctl, "cat_names": ctl, "all_sessions": all_sessions, "menu_items": _get_menu(), "foto_warnings": foto_warnings_list, "foto_referensi": foto_referensi, "db_items_ref": dbi_fw, "item_kantors_json": item_kantors_json_str, "trend_icon": trend_icon, "area_summaries": area_summaries, "pic_activities": pic_activities, "active_pic_count": active_pic_count, "draft_count": draft_count, "today_submit_count": today_submit_count, "total_pic": total_pic})
 
 @router.get("/survey/api/kantor-checklist/dashboard-data")
 async def dashboard_data_api(request: Request, session: Optional[str] = Cookie(None), cat: str = Query(""), item: str = Query(""), kantor_code: str = Query("")):
@@ -3479,6 +3644,63 @@ async def kantor_trend(request: Request, kantor_code: str, session: Optional[str
         return {"ok": True, "kantor_code": kantor_code, "scores": scores}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.get("/survey/api/kantor-checklist/findings")
+async def findings_api(request: Request, session: Optional[str] = Cookie(None),
+                       q: str = Query(""), category: str = Query("")):
+    """Return all notes from submitted surveys, filterable by kantor/search + category."""
+    user = get_user_from_cookie(session)
+    if not user:
+        return JSONResponse({"ok": False, "error": "Not logged in"}, status_code=401)
+    try:
+        conn = get_db(); cur = conn.cursor()
+        # Get items for label mapping
+        dbi = _get_items_from_db()
+        # Fetch all submitted surveys with status_data containing notes
+        cur.execute("""
+            SELECT kd.kantor_code, kd.pic, kd.updated_at, kd.status_data::text
+            FROM origo.kantor_checklist_data kd
+            WHERE kd.status_data::text LIKE '%note%'
+              AND kd.workflow_status = 'submitted'
+            ORDER BY kd.updated_at DESC
+        """)
+        findings = []
+        for r_find in cur.fetchall():
+            kc_find = r_find[0]
+            pic_find = r_find[1] or ""
+            ts_find = r_find[2]
+            sd_text = r_find[3]
+            if not sd_text:
+                continue
+            try:
+                sd_arr = json.loads(sd_text)
+            except:
+                continue
+            for idx, item_data in enumerate(sd_arr):
+                if isinstance(item_data, dict) and item_data.get('note'):
+                    note_text = item_data['note'].strip()
+                    if not note_text:
+                        continue
+                    if q and q.lower() not in kc_find.lower():
+                        continue
+                    item_label = ""
+                    if idx < len(dbi):
+                        item_label = f"{dbi[idx].get('cat','')} — {dbi[idx].get('label','')}"
+                    if category and category not in item_label:
+                        continue
+                    findings.append({
+                        "kantor_code": kc_find,
+                        "pic": pic_find,
+                        "item_label": item_label,
+                        "note": note_text,
+                        "updated_at": str(ts_find)[:19] if ts_find else ""
+                    })
+        cur.close(); conn.close()
+        return JSONResponse({"ok": True, "findings": findings})
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
 
 
 @router.get("/survey/api/serve-pdf/{kantor_code}")
