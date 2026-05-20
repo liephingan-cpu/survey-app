@@ -3662,6 +3662,7 @@ async def item_stats_api(request: Request, session: Optional[str] = Cookie(None)
             SELECT kantor_code, status_data, yes_count, no_count, total_items, workflow_status
             FROM origo.kantor_checklist_data
             WHERE status_data IS NOT NULL AND jsonb_array_length(status_data) > 0
+              AND workflow_status IN ('submitted', 'reviewed', 'approved')
         """)
 
         dbitems = _get_items_from_db()
