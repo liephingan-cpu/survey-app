@@ -175,6 +175,7 @@ img.auto-orient { max-height:100px;object-fit:contain;background:#f1f5f9;border-
     <option value="">📍 Semua Wilayah</option>
   </select>
   <span style="font-size:.68rem;color:#64748b;padding:5px 0;" id="item-stats-label">Memuat data nasional...</span>
+  <span id="item-stats-status-info" style="display:none;font-size:.6rem;color:#94a3b8;padding:2px 6px;background:#f8fafc;border-radius:4px;margin-left:4px;">ⓘ</span>
 </div>
 
 <!-- Info Bobot Kategori -->
@@ -333,7 +334,14 @@ function loadItemStats() {
 
 function renderItemStats(d) {
   const label = !d.filter.area ? '🌐 Nasional' : d.filter.area + (d.filter.wilayah ? ' > ' + d.filter.wilayah : '');
-  document.getElementById('item-stats-label').textContent = label + ' — ' + (d.total_sessions || 0) + ' survei';
+  document.getElementById('item-stats-label').innerHTML = label + ' — <strong>' + (d.total_sessions || 0) + '</strong> survei <span style="font-size:.6rem;color:#94a3b8;font-weight:400;"></span>';
+
+  // Info status: submitted only
+  const infoBar = document.getElementById('item-stats-status-info');
+  if (infoBar) {
+    infoBar.style.display = 'block';
+    infoBar.textContent = 'Data analisa hanya mencakup survei dengan status submitted. Draft/Reset tidak dihitung.';
+  }
 
   // Scorecard — guard against missing elements
   const gid = (id) => document.getElementById(id);
