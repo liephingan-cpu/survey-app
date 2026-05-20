@@ -1,6 +1,6 @@
 """
-checklist.py — Kantor Checklist routes. FastAPI.
-Form 100% server-side render — NO JS dependency buat nampilin form.
+checklist.py - Kantor Checklist routes. FastAPI.
+Form 100% server-side render - NO JS dependency buat nampilin form.
 """
 import json
 import os
@@ -252,7 +252,7 @@ def get_db():
 
 @router.get("/survey/api/master-data")
 async def master_data(request: Request):
-    """Semua data master dalam 1 response — kategori, item, options."""
+    """Semua data master dalam 1 response - kategori, item, options."""
     try:
         conn = get_db()
         cur = conn.cursor()
@@ -351,7 +351,7 @@ async def index(request: Request, session: Optional[str] = Cookie(None)):
                     "total": sr[3],
                     "pic": sr[4] or ""
                 }
-        # Ambil lock timestamp juga — SEBELUM cur.close()
+        # Ambil lock timestamp juga - SEBELUM cur.close()
         lock_map = {}
         if codes:
             cur.execute(f"""
@@ -389,7 +389,7 @@ async def index(request: Request, session: Optional[str] = Cookie(None)):
                 lock_ts = lock["updated_at"] if lock["updated_at"].tzinfo else lock["updated_at"].replace(tzinfo=timezone.utc)
                 lock_age = now - lock_ts
                 if lock_age > lock_timeout:
-                    # Lock expired — treat sebagai available, bukan conflict
+                    # Lock expired - treat sebagai available, bukan conflict
                     k["workflow"] = "draft_expired"
                     k["expired_pic"] = lock["pic"]
                     k["expired_ago"] = int(lock_age.total_seconds() / 60)
@@ -449,7 +449,7 @@ async def form(request: Request, kantor_code: str, session: Optional[str] = Cook
 
     current_pic = user.get("user_id", "")
 
-    # Lock timeout — draft expired setelah 30 menit inactivity
+    # Lock timeout - draft expired setelah 30 menit inactivity
     lock_expired = False
     same_user_refresh = (workflow_status == "draft") and existing_pic and existing_pic == current_pic
 
@@ -606,21 +606,21 @@ async def api_submit(request: Request, session: Optional[str] = Cookie(None)):
         except: photo_data = {}
         for i, s in enumerate(status_data):
             if i >= len(dbitems): break
-            
+
             # ── Validasi wajib catatan ──
             if dbitems[i].get("wajib_catatan", False):
                 note = s.get("note", "").strip()
                 if not note:
                     return JSONResponse(
-                        {"ok": False, "error": f"Item #{i} ('{dbitems[i].get('label','')}') — wajib isi catatan!"},
+                        {"ok": False, "error": f"Item #{i} ('{dbitems[i].get('label','')}') - wajib isi catatan!"},
                         status_code=400
                     )
-            
+
             policy = dbitems[i].get("wajib_foto_policy", "bermasalah")
             policy_if_no = dbitems[i].get("policy_if_no", False)
             try: sv = int(s.get("status", "99"))
             except: sv = 99
-            
+
             # Policy dinamis: kalo 'policy_if_no=true' dan user pilih opsi 'no', override jadi 'tanpa'
             # Cek dari options apakah option ini is_no
             effective_policy = policy
@@ -631,7 +631,7 @@ async def api_submit(request: Request, session: Optional[str] = Cookie(None)):
                         if opt.get("weight_mult", 1.0) == 0.0:
                             effective_policy = "tanpa"
                         break
-            
+
             needs_photo = False
             if effective_policy == "buktikan":
                 needs_photo = True  # foto untuk SEMUA status
@@ -674,7 +674,7 @@ async def api_submit(request: Request, session: Optional[str] = Cookie(None)):
                             has_video = Path(vid_path).exists()
                 if not has_photo and not has_video:
                     return JSONResponse(
-                        {"ok": False, "error": f"Item #{i} ('{dbitems[i].get('label','')}') — butuh dokumentasi (foto/video)!"},
+                        {"ok": False, "error": f"Item #{i} ('{dbitems[i].get('label','')}') - butuh dokumentasi (foto/video)!"},
                         status_code=400
                     )
 
@@ -694,7 +694,7 @@ async def api_submit(request: Request, session: Optional[str] = Cookie(None)):
         no_count = 0
     no_count = sum(1 for s in status_data if int(s.get('status', 99)) in (1,2,3,4))
     total_items = len(status_data)
-    
+
     # Hitung weighted score
     try:
         db_items_for_score = _get_items_from_db()
@@ -708,13 +708,13 @@ async def api_submit(request: Request, session: Optional[str] = Cookie(None)):
         cur = conn.cursor()
         # Cek draft session terakhir untuk kantor ini
         cur.execute(
-            """SELECT id FROM origo.kantor_checklist_data 
+            """SELECT id FROM origo.kantor_checklist_data
                WHERE kantor_code = %s AND workflow_status = 'draft'
                ORDER BY survey_seq DESC LIMIT 1""",
             (kantor_code,)
         )
         draft_row = cur.fetchone()
-        
+
         if draft_row:
             # Update draft yang ada
             cur.execute(
@@ -749,7 +749,7 @@ async def api_submit(request: Request, session: Optional[str] = Cookie(None)):
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 # ── Dashboard ──
-# Fungsi helper — ambil items dari DB
+# Fungsi helper - ambil items dari DB
 
 
 def _hitung_weighted_score(status_data, db_items):
@@ -763,7 +763,7 @@ def _hitung_weighted_score(status_data, db_items):
     for i, di in enumerate(db_items):
         item_weight = di.get("weight", 1.0)
         max_possible = item_weight * 1.0
-        
+
         # Cari status dari status_data (kalo ada)
         sv = -1
         foto_geo = None
@@ -774,7 +774,7 @@ def _hitung_weighted_score(status_data, db_items):
                 sv = int(st)
             except (ValueError, TypeError):
                 sv = -1
-        
+
         # Item tidak terisi = score 0
         if sv < 0:
             actual = 0.0
@@ -785,7 +785,7 @@ def _hitung_weighted_score(status_data, db_items):
                     wm = opt.get("weight_mult", 1.0)
                     break
             actual = item_weight * wm
-        
+
         total_actual += actual
         total_max += max_possible
         details.append({
@@ -873,7 +873,7 @@ def _get_items_from_db():
         items = []
         for r in cur.fetchall():
             type_code = r[4]
-            per_item_opts = r[8] if r[8] else None  # options_json — custom per-item labels
+            per_item_opts = r[8] if r[8] else None  # options_json - custom per-item labels
             item_opts = None
             if per_item_opts and isinstance(per_item_opts, list) and len(per_item_opts) > 0:
                 # Custom per-item options (for special items with unique labels)
@@ -996,7 +996,7 @@ async def survey_dashboard(request: Request, session: Optional[str] = Cookie(Non
         # ── Enhanced Problem Items with Weighted Score, Priority, Per-Kantor Breakdown ──
         dbitems_ic = _get_items_from_db()
         conn = get_db(); cur = conn.cursor()
-        # Ambil status_data + kantor_code dari semua survey — hitung distribusi per opsi per item
+        # Ambil status_data + kantor_code dari semua survey - hitung distribusi per opsi per item
         cur.execute("SELECT kcd.kantor_code, kcd.pic, kcd.status_data, COALESCE(nbmm.office_name, kcd.kantor_code) FROM origo.kantor_checklist_data kcd LEFT JOIN origo.network_branch_monitoring_master nbmm ON kcd.kantor_code = nbmm.office_code WHERE kcd.status_data IS NOT NULL")
         ic = {}; ic_count = {}; ic_baik = {}; ic_kurang = {}; twd = 0
         item_kantor_map = {}  # item_idx -> [{kantor_code, status, pic, sv}]
@@ -1057,7 +1057,7 @@ async def survey_dashboard(request: Request, session: Optional[str] = Cookie(Non
             tc = dbitems_ic[i]["type"]
             item_w = dbitems_ic[i]["weight"]
             total_responses = ic.get(i, 0)
-            
+
             # Weighted average: sum of (count * weight_mult) / total_responses
             weighted_sum = 0.0
             opts_list = []
@@ -1069,20 +1069,20 @@ async def survey_dashboard(request: Request, session: Optional[str] = Cookie(Non
                     "val": ov, "count": cnt,
                     "label": oi["label"], "is_no": oi["is_no"]
                 })
-            
+
             avg_score = round(weighted_sum / total_responses * 100, 1) if total_responses > 0 else 0
-            
+
             baik = ic_baik.get(i, 0)
             kurang = ic_kurang.get(i, 0)
-            
+
             # Priority = (kurang/total) * (1 - avg_score/100) * item_weight
             kurang_ratio = kurang / total_responses if total_responses > 0 else 0
             score_gap = 1 - (avg_score / 100)
             priority_score = round(kurang_ratio * score_gap * item_w, 4)
-            
+
             # Count AI foto warnings for this item
             foto_issues = sum(1 for k in item_kantor_map.get(i, []) if not k.get("foto_relevan", True))
-            
+
             problem_items.append({
                 "idx": i,
                 "cat": dbitems_ic[i]["cat"],
@@ -1098,7 +1098,7 @@ async def survey_dashboard(request: Request, session: Optional[str] = Cookie(Non
                 "foto_issues": foto_issues,
                 "kantors": item_kantor_map.get(i, [])
             })
-        
+
         # Sort by priority descending
         problem_items.sort(key=lambda x: -x["priority"])
         # Re-assign index after sort
@@ -1123,11 +1123,11 @@ async def survey_dashboard(request: Request, session: Optional[str] = Cookie(Non
             else:
                 pit["priority_label"] = "rendah"
 
-        # Best/worst by avg_score (not yes_pct) — use stored .idx from problem_items
+        # Best/worst by avg_score (not yes_pct) - use stored .idx from problem_items
         best_items = sorted(problem_items, key=lambda x: -x["avg_score"])[:5]
         worst_items = sorted([p for p in problem_items if p["avg_score"] > 0], key=lambda x: x["avg_score"])[:5]
-        
-        # Extract kantor breakdown for client-side expandable rows — ALL kantor
+
+        # Extract kantor breakdown for client-side expandable rows - ALL kantor
         # Get opt_labels for status labels
         conn_ol2 = get_db()
         cur_ol2 = conn_ol2.cursor()
@@ -1141,7 +1141,7 @@ async def survey_dashboard(request: Request, session: Optional[str] = Cookie(Non
         for tc, ov, lbl, inh in cur_ol2.fetchall():
             opt_labels_all.setdefault(tc, {})[ov] = {"label": lbl, "is_no": inh}
         cur_ol2.close(); conn_ol2.close()
-        
+
         kantor_breakdown = {}
         for pit in problem_items:
             item_idx = pit["idx"]
@@ -1201,7 +1201,7 @@ async def survey_dashboard(request: Request, session: Optional[str] = Cookie(Non
                 st = s_fw.get("status", "")
                 try: sv = int(st)
                 except: sv = -1
-                
+
                 # Warning untuk foto tidak sesuai
                 if fp and frelevan == False:
                     foto_warnings_list.append({
@@ -1213,8 +1213,8 @@ async def survey_dashboard(request: Request, session: Optional[str] = Cookie(Non
                         "desc": (fdesc or "Foto tidak sesuai")[:100],
                         "status_value": sv
                     })
-                
-                # Kumpulkan foto referensi — cari yang relevan per item per status
+
+                # Kumpulkan foto referensi - cari yang relevan per item per status
                 # Simpan foto dengan skor: relevan=true > relevan=false, score rendah > score tinggi
                 if fp and sv >= 0:
                     if i_fw not in foto_referensi:
@@ -1228,13 +1228,13 @@ async def survey_dashboard(request: Request, session: Optional[str] = Cookie(Non
                         "relevan": frelevan,
                         "score": sv
                     })
-        
-        # Sort & pilih foto terbaik per item per status — prioritaskan relevan=true
+
+        # Sort & pilih foto terbaik per item per status - prioritaskan relevan=true
         for idx in foto_referensi:
             for sv in foto_referensi[idx]:
                 foto_referensi[idx][sv].sort(key=lambda x: (0 if x["relevan"] else 1, x["score"]))
                 foto_referensi[idx][sv] = foto_referensi[idx][sv][:3]  # max 3 foto per status
-        
+
         cur_fw.close(); conn_fw.close()
     except Exception:
         import traceback; traceback.print_exc()
@@ -1261,7 +1261,7 @@ async def survey_dashboard(request: Request, session: Optional[str] = Cookie(Non
     except Exception:
         pass
 
-    # ── Trend: membaik/memburuk/stabil — bandingkan skor antar survey (Feature #3) ──
+    # ── Trend: membaik/memburuk/stabil - bandingkan skor antar survey (Feature #3) ──
     trend_icon = "➡️"
     try:
         conn_tr = get_db(); cur_tr = conn_tr.cursor()
@@ -1278,7 +1278,7 @@ async def survey_dashboard(request: Request, session: Optional[str] = Cookie(Non
                 kantor_scores[kc_tr] = []
             kantor_scores[kc_tr].append(float(ws_tr))
         cur_tr.close(); conn_tr.close()
-        
+
         better = 0
         worse = 0
         for kc_tr, scs in kantor_scores.items():
@@ -1305,14 +1305,15 @@ async def survey_dashboard(request: Request, session: Optional[str] = Cookie(Non
     area_summaries = []
     try:
         from collections import defaultdict
-        area_groups = defaultdict(lambda: {"area_code": "?", "area_name": "?", "branches": [], "scores": [], "submitted": 0, "total": 0})
-        wilayah_groups = defaultdict(lambda: {"area_code": "?", "area_name": "?", "wilayah_code": "?", "wilayah_name": "?", "branches": [], "scores": [], "submitted": 0, "total": 0})
+        area_groups = defaultdict(lambda: {"area_code": "?", "area_name": "?", "branches": [], "scores": [], "submitted": 0, "draft": 0, "total": 0})
+        wilayah_groups = defaultdict(lambda: {"area_code": "?", "area_name": "?", "wilayah_code": "?", "wilayah_name": "?", "branches": [], "scores": [], "submitted": 0, "draft": 0, "total": 0})
         for m in mws:
             ac = m.get("area_code", "?")
             an = m.get("area_name", "?")
             wc = m.get("wilayah_code", "?")
             wn = m.get("wilayah_name", "?")
             sc = m.get("main")
+            wf = m.get("main_workflow", "")
             wk = f"{ac}>{wc}"
             # Area
             area_groups[ac]["area_code"] = ac
@@ -1320,8 +1321,10 @@ async def survey_dashboard(request: Request, session: Optional[str] = Cookie(Non
             area_groups[ac]["total"] += 1
             if sc is not None:
                 area_groups[ac]["scores"].append(sc)
-                if m.get("main_workflow") in ("submitted", "final"):
+                if wf in ("submitted", "final"):
                     area_groups[ac]["submitted"] += 1
+            if wf == "draft":
+                area_groups[ac]["draft"] += 1
             # Wilayah
             wilayah_groups[wk]["area_code"] = ac
             wilayah_groups[wk]["area_name"] = an
@@ -1330,8 +1333,10 @@ async def survey_dashboard(request: Request, session: Optional[str] = Cookie(Non
             wilayah_groups[wk]["total"] += 1
             if sc is not None:
                 wilayah_groups[wk]["scores"].append(sc)
-                if m.get("main_workflow") in ("submitted", "final"):
+                if wf in ("submitted", "final"):
                     wilayah_groups[wk]["submitted"] += 1
+            if wf == "draft":
+                wilayah_groups[wk]["draft"] += 1
         # Build area summaries with nested wilayah
         for ac in sorted(area_groups.keys()):
             ag = area_groups[ac]
@@ -1340,20 +1345,26 @@ async def survey_dashboard(request: Request, session: Optional[str] = Cookie(Non
                 wg = wilayah_groups[wk]
                 if wg["area_code"] == ac:
                     avg_w = round(sum(wg["scores"]) / len(wg["scores"]), 1) if wg["scores"] else None
+                    draft_w = wg["draft"] if wg.get("draft") else 0
                     wilayah_list.append({
                         "wilayah_code": wg["wilayah_code"],
                         "wilayah_name": wg["wilayah_name"],
                         "total": wg["total"],
                         "submitted": wg["submitted"],
+                        "draft": draft_w,
                         "avg_score": avg_w,
                     })
             avg_a = round(sum(ag["scores"]) / len(ag["scores"]), 1) if ag["scores"] else None
             pct_a = round(ag["submitted"] / ag["total"] * 100, 1) if ag["total"] > 0 else 0
+            draft_a = ag["draft"] if ag.get("draft") else 0
+            belum_a = ag["total"] - ag["submitted"] - draft_a
             area_summaries.append({
                 "area_code": ac,
                 "area_name": ag["area_name"],
                 "total": ag["total"],
                 "submitted": ag["submitted"],
+                "draft": draft_a,
+                "belum": belum_a,
                 "avg_score": avg_a,
                 "pct_complete": pct_a,
                 "wilayahs": wilayah_list,
@@ -1398,7 +1409,7 @@ async def survey_dashboard(request: Request, session: Optional[str] = Cookie(Non
             if workflow == 'draft':
                 draft_count += 1
 
-            if workflow == 'submitted':
+            if workflow == 'submitted' and today_cnt and today_cnt > 0:
                 today_submit_count += 1
 
             # Avoid duplicates: only first (most recent) row per PIC
@@ -1475,22 +1486,22 @@ async def dashboard_data_api(request: Request, session: Optional[str] = Cookie(N
 
     try:
         conn = get_db(); cur = conn.cursor()
-        
+
         # Ambil sessions berdasarkan filter kantor
         if kantor_code:
             cur.execute("""
-                SELECT kantor_code, nomor_survei, survey_seq, status_data, yes_count, no_count, total_items, workflow_status 
-                FROM origo.kantor_checklist_data 
-                WHERE kantor_code = %s AND status_data IS NOT NULL AND jsonb_array_length(status_data) > 0 
+                SELECT kantor_code, nomor_survei, survey_seq, status_data, yes_count, no_count, total_items, workflow_status
+                FROM origo.kantor_checklist_data
+                WHERE kantor_code = %s AND status_data IS NOT NULL AND jsonb_array_length(status_data) > 0
                 ORDER BY survey_seq ASC
             """, (kantor_code,))
         else:
             cur.execute("""
-                SELECT kantor_code, nomor_survei, survey_seq, status_data, yes_count, no_count, total_items, workflow_status 
-                FROM origo.kantor_checklist_data 
+                SELECT kantor_code, nomor_survei, survey_seq, status_data, yes_count, no_count, total_items, workflow_status
+                FROM origo.kantor_checklist_data
                 WHERE status_data IS NOT NULL AND jsonb_array_length(status_data) > 0
             """)
-        
+
         sessions = []
         all_status = []
         for r in cur.fetchall():
@@ -1505,7 +1516,7 @@ async def dashboard_data_api(request: Request, session: Optional[str] = Cookie(N
                     "stats": {"yes": float(r[4] or 0), "no": float(r[5] or 0), "total": float(r[6] or 0)},
                     "status_data": [s.get("status") if isinstance(s, dict) else s for s in sd] if sd else []
                 })
-        
+
         # ── Perbandingan antar survei ──
         comparisons = []
         if len(sessions) >= 2:
@@ -1522,7 +1533,7 @@ async def dashboard_data_api(request: Request, session: Optional[str] = Cookie(N
                 if di_idx < len(pd_latest) and isinstance(pd_latest[di_idx], dict):
                     try: sv_latest = int(pd_latest[di_idx].get("status", 99))
                     except: pass
-                
+
                 if sv_prev == 99 and sv_latest == 99:
                     trend = "unknown"
                 elif sv_prev == 99:
@@ -1534,13 +1545,13 @@ async def dashboard_data_api(request: Request, session: Optional[str] = Cookie(N
                 else:
                     trend = "stabil"
                 comparisons.append({"idx": di_idx, "trend": trend, "prev_status": sv_prev if sv_prev != 99 else None, "latest_status": sv_latest if sv_latest != 99 else None})
-        
+
         # Ambil items dari DB untuk filter + mapping
         dbitems = _get_items_from_db()
         if not dbitems:
             return JSONResponse({"ok": False, "error": "No items in DB"}, status_code=500)
-            
-        # Ambil semua opsi dari DB — weight_mult + label + is_no per tipe pertanyaan
+
+        # Ambil semua opsi dari DB - weight_mult + label + is_no per tipe pertanyaan
         cur2 = conn.cursor()
         cur2.execute("""
             SELECT t.type_code, o.opt_value::int, o.weight_mult, o.opt_label, COALESCE(o.is_no, false)
@@ -1595,8 +1606,8 @@ async def dashboard_data_api(request: Request, session: Optional[str] = Cookie(N
 
             # Skor per item: rata-rata weight_mult (0-1), dikali 100 jadi persen
             item_score = round(avg_raw * 100, 1) if avg_raw > 0 else 0
-            
-            # Opsi dinamis — pake label & is_no dari DB per tipe
+
+            # Opsi dinamis - pake label & is_no dari DB per tipe
             tc = dbitems[i]["type"]
             item_opts = []
             for ov in sorted(ist[i]["opts"].keys()):
@@ -1607,7 +1618,7 @@ async def dashboard_data_api(request: Request, session: Optional[str] = Cookie(N
                     "label": ol.get("label", f"Nilai {ov}"),
                     "is_no": ol.get("is_no", False)
                 })
-            
+
             detail.append({
                 "idx": i, "cat": cat_c,
                 "label": dbitems[i]["label"],
@@ -1767,17 +1778,17 @@ async def helper_status(request: Request, session: Optional[str] = Cookie(None))
     user = get_user_from_cookie(session)
     if not user:
         return JSONResponse({"ok": False, "error": "Not logged in"}, status_code=401)
-    
+
     form_data = await request.form()
     try: idx = int(form_data.get('idx', -1))
     except: idx = -1
     value = form_data.get('value', '0')
-    
+
     if idx < 0:
         return JSONResponse({"ok": False, "error": "Invalid idx"}, status_code=400)
-    
+
     sv = int(value)
-    
+
     # Ambil helper_foto langsung dari DB
     conn = get_db()
     cur = conn.cursor()
@@ -1788,15 +1799,15 @@ async def helper_status(request: Request, session: Optional[str] = Cookie(None))
     row = cur.fetchone()
     cur.close()
     conn.close()
-    
+
     if not row:
         return JSONResponse({"ok": False, "error": "Item not found"}, status_code=404)
-    
+
     hf = row[0] or {}
     msg = hf.get(str(sv), "")
     if not msg and sv == 0:
         msg = "✅ Kondisi baik"
-    
+
     return {"ok": True, "helper": msg, "idx": idx}
 
 # ── Auto-save (perubahan status/catatan/foto realtime) ──
@@ -1805,15 +1816,15 @@ async def api_new_survey(request: Request, session: Optional[str] = Cookie(None)
     user = get_user_from_cookie(session)
     if not user:
         return JSONResponse({"ok": False, "error": "Not logged in"}, status_code=401)
-    
+
     try:
         form_data = await request.form()
         kantor_code = form_data.get("kantor_code", "").strip()
         if not kantor_code:
             return JSONResponse({"ok": False, "error": "kantor_code required"}, status_code=400)
-        
+
         conn = get_db(); cur = conn.cursor()
-        
+
         # Cek apakah masih ada draft tersimpan
         cur.execute(
             "SELECT nomor_survei FROM origo.kantor_checklist_data WHERE kantor_code = %s AND workflow_status = 'draft'",
@@ -1821,38 +1832,38 @@ async def api_new_survey(request: Request, session: Optional[str] = Cookie(None)
         )
         existing = cur.fetchone()
         if existing:
-            # Ada draft — redirect ke form yang udah ada
+            # Ada draft - redirect ke form yang udah ada
             conn.close()
             return {"ok": True, "redirect": f"/survey/kantor-checklist/form/{kantor_code}", "nomor_survei": existing[0], "existing_draft": True}
-        
+
         # Generate nomor baru
         from datetime import datetime
         tgl = datetime.now().strftime('%Y%m%d')
         # Hapus draft expired (created more than 24h ago) sebelum generate
         cur.execute(
-            """DELETE FROM origo.kantor_checklist_data 
+            """DELETE FROM origo.kantor_checklist_data
                WHERE kantor_code = %s AND workflow_status = 'draft' AND created_at < NOW() - INTERVAL '24 hours'""",
             (kantor_code,)
         )
         cur.execute(
-            """SELECT COALESCE(MAX(survey_seq), 0) + 1 
-               FROM origo.kantor_checklist_data 
+            """SELECT COALESCE(MAX(survey_seq), 0) + 1
+               FROM origo.kantor_checklist_data
                WHERE kantor_code = %s AND created_at::date = CURRENT_DATE""",
             (kantor_code,)
         )
         next_seq = cur.fetchone()[0] or 1
         nomor_survei = f'SRV-{kantor_code}-{tgl}-{next_seq:03d}'
-        
+
         blank_items = [{"status":"", "note":"", "foto":""} for _ in range(ITEM_COUNT)]
         cur.execute(
-            """INSERT INTO origo.kantor_checklist_data 
+            """INSERT INTO origo.kantor_checklist_data
                (kantor_code, nomor_survei, survey_seq, pic, tgl_cek, status_data, workflow_status, yes_count, no_count, total_items, created_at)
                VALUES (%s, %s, %s, %s, CURRENT_DATE, %s, 'draft', 0, 0, 0, NOW())""",
             (kantor_code, nomor_survei, next_seq, user.get("user_id", ""), json.dumps(blank_items))
         )
         conn.commit()
         cur.close(); conn.close()
-        
+
         return {"ok": True, "redirect": f"/survey/kantor-checklist/form/{kantor_code}", "nomor_survei": nomor_survei, "existing_draft": False}
     except Exception as e:
         import traceback; traceback.print_exc()
@@ -1864,27 +1875,27 @@ async def api_auto_save(request: Request, session: Optional[str] = Cookie(None))
     user = get_user_from_cookie(session)
     if not user:
         return JSONResponse({"ok": False, "error": "Not logged in"}, status_code=401)
-    
+
     form_data = await request.form()
     kantor_code = form_data.get('kantor_code', '').strip()
     try: idx = int(form_data.get('idx', -1))
     except: idx = -1
     field = form_data.get('field', '')
     value = form_data.get('value', '')
-    
+
     if not kantor_code or idx < 0 or not field:
         return JSONResponse({"ok": False, "error": "kantor_code, idx, field wajib"}, status_code=400)
-    
+
     try:
         conn = get_db(); cur = conn.cursor()
-        
+
         # Cek atau buat session
         cur.execute(
             "SELECT kantor_code, status_data FROM origo.kantor_checklist_data WHERE kantor_code = %s AND workflow_status = 'draft'",
             (kantor_code,)
         )
         row = cur.fetchone()
-        
+
         if not row:
             # Buat session draft baru
             blank_items = [{"status":"", "note":"", "foto":""} for _ in range(ITEM_COUNT)]
@@ -1892,15 +1903,15 @@ async def api_auto_save(request: Request, session: Optional[str] = Cookie(None))
             tgl = datetime.now().strftime('%Y%m%d')
             # Cari nomor urut berikutnya untuk kantor ini hari ini
             cur.execute(
-                """SELECT COALESCE(MAX(survey_seq), 0) + 1 
-                   FROM origo.kantor_checklist_data 
+                """SELECT COALESCE(MAX(survey_seq), 0) + 1
+                   FROM origo.kantor_checklist_data
                    WHERE kantor_code = %s AND created_at::date = CURRENT_DATE""",
                 (kantor_code,)
             )
             next_seq = cur.fetchone()[0] or 1
             nomor_survei = f'SRV-{kantor_code}-{tgl}-{next_seq:03d}'
             cur.execute(
-                """INSERT INTO origo.kantor_checklist_data 
+                """INSERT INTO origo.kantor_checklist_data
                    (kantor_code, nomor_survei, survey_seq, pic, tgl_cek, status_data, workflow_status, yes_count, no_count, total_items, created_at)
                    VALUES (%s, %s, %s, %s, CURRENT_DATE, %s, 'draft', 0, 0, 0, NOW())
                    RETURNING kantor_code""",
@@ -1911,17 +1922,17 @@ async def api_auto_save(request: Request, session: Optional[str] = Cookie(None))
         else:
             session_id, sd = row
             status_data = sd if sd else [{"status":"", "note":"", "foto":""} for _ in range(ITEM_COUNT)]
-        
+
         # Pastikan array cukup panjang
         while len(status_data) <= idx:
             status_data.append({"status":"", "note":"", "foto":""})
-        
+
         # Update field
         if isinstance(status_data[idx], dict):
             status_data[idx][field] = value
         else:
             status_data[idx] = {field: value}
-        
+
         # Hitung ulang
         yes_count = 0
         no_count = 0
@@ -1937,16 +1948,16 @@ async def api_auto_save(request: Request, session: Optional[str] = Cookie(None))
                 elif sv in (1,2,3,4): no_count += 1
             except:
                 pass
-        
+
         cur.execute(
-            """UPDATE origo.kantor_checklist_data 
+            """UPDATE origo.kantor_checklist_data
                SET status_data = %s, yes_count = %s, no_count = %s, total_items = %s, updated_at = NOW()
                WHERE kantor_code = %s""",
             (json.dumps(status_data), yes_count, no_count, filled, session_id)
         )
         conn.commit()
         cur.close(); conn.close()
-        
+
         return {"ok": True, "kantor_code": session_id, "yes": yes_count, "no": no_count, "filled": filled}
     except Exception as e:
         import traceback; traceback.print_exc()
@@ -2121,7 +2132,7 @@ async def pdf_survey(request: Request, kantor_code: str, dl: int = Query(0), ses
         for ii, it in baik_items[:5]:
             di = db_items[ii]
             st = int(it.get("status","0"))
-            pages.append(f"<tr><td style='text-align:center'>{ii+1}</td><td>{di['cat']} — {di['label']}</td><td style='text-align:center'>{vlbl.get(st,'-')}</td></tr>")
+            pages.append(f"<tr><td style='text-align:center'>{ii+1}</td><td>{di['cat']} - {di['label']}</td><td style='text-align:center'>{vlbl.get(st,'-')}</td></tr>")
         if not baik_items:
             pages.append("<tr><td colspan='3' style='text-align:center;color:#999'>Tidak ada item baik</td></tr>")
         pages.append("</tbody></table>")
@@ -2134,7 +2145,7 @@ async def pdf_survey(request: Request, kantor_code: str, dl: int = Query(0), ses
         for ii, it in baik_items[:5]:
             di = db_items[ii]
             st = int(it.get("status","0"))
-            pages.append(f"<tr><td style='text-align:center'>{ii+1}</td><td>{di['cat']} — {di['label']}</td><td style='text-align:center'>{vlbl.get(st,'-')}</td></tr>")
+            pages.append(f"<tr><td style='text-align:center'>{ii+1}</td><td>{di['cat']} - {di['label']}</td><td style='text-align:center'>{vlbl.get(st,'-')}</td></tr>")
         if not baik_items:
             pages.append("<tr><td colspan='3' style='text-align:center;color:#999'>Tidak ada item baik</td></tr>")
         pages.append("</tbody></table>")
@@ -2143,7 +2154,7 @@ async def pdf_survey(request: Request, kantor_code: str, dl: int = Query(0), ses
         for ii, it in rusak_items[:5]:
             di = db_items[ii]
             st = int(it.get("status","0"))
-            pages.append(f"<tr><td style='text-align:center'>{ii+1}</td><td>{di['cat']} — {di['label']}</td><td style='text-align:center'>{vlbl.get(st,'-')}</td></tr>")
+            pages.append(f"<tr><td style='text-align:center'>{ii+1}</td><td>{di['cat']} - {di['label']}</td><td style='text-align:center'>{vlbl.get(st,'-')}</td></tr>")
         if not rusak_items:
             pages.append("<tr><td colspan='3' style='text-align:center;color:#999'>Semua item baik</td></tr>")
         pages.append("</tbody></table>")
@@ -2162,7 +2173,7 @@ async def pdf_survey(request: Request, kantor_code: str, dl: int = Query(0), ses
                     "label": di['label'],
                     "desc": fdesc[:60] if fdesc else "Foto tidak sesuai"
                 })
-        
+
         if foto_warnings:
             pages.append("""
 <h3>⚠️ Peringatan Dokumentasi</h3>
@@ -2174,7 +2185,7 @@ async def pdf_survey(request: Request, kantor_code: str, dl: int = Query(0), ses
 <thead><tr><th style='width:22px'>#</th><th>Item</th><th style='width:120px'>Catatan AI</th></tr></thead>
 <tbody>""")
             for idx, fw in enumerate(foto_warnings):
-                pages.append(f"<tr style='background:#fef2f2'><td style='text-align:center'>{idx+1}</td><td>{fw['cat']} — {fw['label']}</td><td style='color:#dc2626;font-size:7pt'>{fw['desc']}</td></tr>")
+                pages.append(f"<tr style='background:#fef2f2'><td style='text-align:center'>{idx+1}</td><td>{fw['cat']} - {fw['label']}</td><td style='color:#dc2626;font-size:7pt'>{fw['desc']}</td></tr>")
             pages.append("</tbody></table>")
         elif any(it.get("foto","") if isinstance(it,dict) else "" for it in items):
             pages.append("<h3>⚠️ Peringatan Dokumentasi</h3><p style='color:#16a34a;font-size:7.5pt;'>✅ Semua dokumentasi foto sesuai dengan konteks pernyataan.</p>")
@@ -2186,7 +2197,7 @@ async def pdf_survey(request: Request, kantor_code: str, dl: int = Query(0), ses
         for ck in sorted(cat_data.keys()):
             cd = cat_data[ck]
             cpct = round(cd["baik"] / cd["total"] * 100, 1) if cd["total"] > 0 else 0
-            pages.append(f"<h3>{cd['label']} — {cpct}%</h3>")
+            pages.append(f"<h3>{cd['label']} - {cpct}%</h3>")
             pages.append("<table><thead><tr><th style='width:18px'>#</th><th>Pernyataan</th><th style='width:45px'>Status</th><th style='width:48px'>Foto</th><th style='width:80px'>Deskripsi</th><th style='width:45px'>Catatan</th></tr></thead><tbody>")
             for ci in cd["items"]:
                 img_td = "<td style='text-align:center'>-</td>"
@@ -2227,7 +2238,7 @@ async def pdf_survey(request: Request, kantor_code: str, dl: int = Query(0), ses
                 pages.append(f"""
 <div class='lamp-item'>
   <img src='data:image/jpeg;base64,{lf['b64']}'>
-  <div class='lamp-label'><strong>{lf['cat']}</strong> — {lf['item']}</div>
+  <div class='lamp-label'><strong>{lf['cat']}</strong> - {lf['item']}</div>
   {desc_str}
   {rel_str}
   {geo_str}
@@ -2390,7 +2401,7 @@ async def api_upload_foto(request: Request, session: Optional[str] = Cookie(None
             img = img.resize((new_w, new_h), Image.LANCZOS)
 
         # ── Gemini: analisa foto ──
-        # SKIP Gemini untuk video — simpan saja
+        # SKIP Gemini untuk video - simpan saja
         is_video_flag = form.get("is_video", "0")
         if is_video_flag in ("1", "true"):
             # Video: simpan tanpa analisa Gemini
@@ -2420,7 +2431,7 @@ async def api_upload_foto(request: Request, session: Optional[str] = Cookie(None
             conn.close()
 
             # Simpan bytes sebelum resize untuk Gemini (pake versi original)
-            # Tapi kita pake version yg udah diresize — cukup
+            # Tapi kita pake version yg udah diresize - cukup
             img_bytes_for_ai = io.BytesIO()
             img.save(img_bytes_for_ai, "JPEG", quality=85)
             img_bytes_for_ai = img_bytes_for_ai.getvalue()
@@ -2435,7 +2446,7 @@ async def api_upload_foto(request: Request, session: Optional[str] = Cookie(None
         # ── Hardstamp: user, kode pernyataan, timestamp, geo, nama kantor ──
         draw = ImageDraw.Draw(img, "RGBA")
         user_name = user.get("fullname", "")
-        
+
         # Ambil nama kantor
         kantor_label_foto = kantor_code
         try:
@@ -2445,14 +2456,14 @@ async def api_upload_foto(request: Request, session: Optional[str] = Cookie(None
             if rl: kantor_label_foto = rl[0]
             cur_lbl.close(); conn_lbl.close()
         except: pass
-        
+
         geo_str = form.get("geo", "")
         if geo_str:
-            stamp_text = f"{now.strftime('%d %b %Y %H:%M')} WIB\n{kantor_code} — {kantor_label_foto[:30]}\n{item_cat}.{idx} | {user_name}\n{geo_str}"
+            stamp_text = f"{now.strftime('%d %b %Y %H:%M')} WIB\n{kantor_code} - {kantor_label_foto[:30]}\n{item_cat}.{idx} | {user_name}\n{geo_str}"
         else:
-            stamp_text = f"{now.strftime('%d %b %Y %H:%M')} WIB\n{kantor_code} — {kantor_label_foto[:30]}\n{item_cat}.{idx} | {user_name}"
+            stamp_text = f"{now.strftime('%d %b %Y %H:%M')} WIB\n{kantor_code} - {kantor_label_foto[:30]}\n{item_cat}.{idx} | {user_name}"
 
-        # Cari font — fallback ke default
+        # Cari font - fallback ke default
         try:
             font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 12)
         except Exception:
@@ -2480,7 +2491,7 @@ async def api_upload_foto(request: Request, session: Optional[str] = Cookie(None
             img.save(filepath, "JPEG", quality=85, optimize=True)
 
         filesize = os.path.getsize(filepath)
-        
+
         if is_video_flag in ("1", "true"):
             video_path = f"/survey/uploads/{filename}"
             foto_path = ""
@@ -2521,7 +2532,7 @@ async def api_upload_foto(request: Request, session: Optional[str] = Cookie(None
             cur2.close()
             conn2.close()
         except Exception:
-            pass  # Gagal simpan deskripsi — bukan fatal
+            pass  # Gagal simpan deskripsi - bukan fatal
 
         res = {
             "ok": True,
@@ -2549,12 +2560,12 @@ async def api_hapus_foto(request: Request, session: Optional[str] = Cookie(None)
 
     form = await request.form()
     foto_path = form.get("foto_path", "").strip()
-    
+
     if not foto_path:
         return JSONResponse({"ok": False, "error": "foto_path required"}, status_code=400)
 
     try:
-        # Hanya hapus file di sistem — path di DB bakal ditimpa pas auto-save atau submit
+        # Hanya hapus file di sistem - path di DB bakal ditimpa pas auto-save atau submit
         relative = foto_path.replace("/survey/uploads/", "")
         full = os.path.join(PHOTO_DIR, relative)
         if os.path.exists(full):
@@ -2596,7 +2607,7 @@ async def api_refresh_reports(request: Request, session: Optional[str] = Cookie(
     user = get_user_from_cookie(session)
     if not user:
         return JSONResponse({"ok": False, "error": "Not logged in"}, status_code=401)
-    
+
     try:
         conn = get_db()
         cur = conn.cursor()
@@ -2623,7 +2634,7 @@ async def api_refresh_reports(request: Request, session: Optional[str] = Cookie(
             ORDER BY kcd.submitted_at ASC NULLS LAST, kcd.kantor_code
         """)
         survey_rows = cur.fetchall()
-        
+
         # Ambil network tree path (utk grouping area/wilayah)
         cur.execute("""
             WITH RECURSIVE tree AS (
@@ -2650,13 +2661,13 @@ async def api_refresh_reports(request: Request, session: Optional[str] = Cookie(
             branch_info[r[0]] = {"display_name": r[1], "branch_kind": r[2], "path_code": r[3], "path_name": r[4]}
 
         cur.close(); conn.close()
-        
+
         from PIL import Image, ImageDraw, ImageFont
-        
+
         tz = __import__('zoneinfo').ZoneInfo("Asia/Jakarta")
         now = __import__('datetime').datetime.now(tz)
         ts_str = now.strftime("%d-%m-%Y %H:%M WIB")
-        
+
         try:
             font_bold = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 14)
             font_reg = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 11)
@@ -2678,7 +2689,7 @@ async def api_refresh_reports(request: Request, session: Optional[str] = Cookie(
         # r[3]=yes_count, r[4]=total_items, r[5]=pic, r[6]=workflow_status
         # r[7]=submitted_at, r[8]=updated_at, r[9]=weighted_score
         # r[10]=status_data, r[11]=nomor_survei, r[12]=pic_name
-        
+
         belum_list = []
         ongoing_list = []
         submitted_list = []
@@ -2692,9 +2703,9 @@ async def api_refresh_reports(request: Request, session: Optional[str] = Cookie(
             else:
                 belum_list.append(r)
 
-        # ─── REPORT: BELUM DIBUAT — query langsung dari tree ───
+        # ─── REPORT: BELUM DIBUAT - query langsung dari tree ───
         def _build_belum():
-            """Report BELUM DIBUAT — ambil branch dari tree yg belum ada di checklist."""
+            """Report BELUM DIBUAT - ambil branch dari tree yg belum ada di checklist."""
             conn2 = get_db()
             cur2 = conn2.cursor()
             cur2.execute("""
@@ -2769,7 +2780,7 @@ async def api_refresh_reports(request: Request, session: Optional[str] = Cookie(
             draw = ImageDraw.Draw(img)
 
             draw.text((pad, 8), f"Belum Dibuat ({len(belum_rows)})", font=font_bold, fill=TXT_TITLE)
-            draw.text((pad, 24), f"— {ts_str}", font=font_sm, fill=TXT_DIM)
+            draw.text((pad, 24), f"- {ts_str}", font=font_sm, fill=TXT_DIM)
 
             y = 46
             i_main = pad
@@ -2808,7 +2819,7 @@ async def api_refresh_reports(request: Request, session: Optional[str] = Cookie(
 
             img.save(os.path.join(REPORT_DIR, "belum_dibuat_report.png"))
         def _build_ongoing():
-            """Report ON PROGRESS — grouping Area > Wilayah, 2 column."""
+            """Report ON PROGRESS - grouping Area > Wilayah, 2 column."""
             if not ongoing_list:
                 return None
             pad = 14
@@ -2984,7 +2995,7 @@ async def api_refresh_reports(request: Request, session: Optional[str] = Cookie(
             img.save(os.path.join(REPORT_DIR, "ongoing_report.png"))
 
         def _build_submitted():
-            """Report SUBMITTED — grouping Area > Wilayah, 2 column."""
+            """Report SUBMITTED - grouping Area > Wilayah, 2 column."""
             if not submitted_list:
                 return None
             pad = 14
@@ -3157,7 +3168,7 @@ async def api_refresh_reports(request: Request, session: Optional[str] = Cookie(
 
 
 async def pdf_public(kantor_code: str):
-    """Endpoint publik — serve PDF tanpa login. Generate kalo belum ada."""
+    """Endpoint publik - serve PDF tanpa login. Generate kalo belum ada."""
     try:
         conn = get_db(); cur = conn.cursor()
         cur.execute(
@@ -3296,14 +3307,14 @@ tr:hover{background:#f1f5f9}
         pages.append("<h3>🏆 5 Terbaik</h3><table><tr><th>#</th><th>Item</th><th>Status</th></tr>")
         for ii, it in baik_items[:5]:
             di = db_items[ii]
-            pages.append(f"<tr><td style='text-align:center'>{ii+1}</td><td>{di['cat']} — {di['label'][:40]}</td><td style='text-align:center'>✅ Baik</td></tr>")
+            pages.append(f"<tr><td style='text-align:center'>{ii+1}</td><td>{di['cat']} - {di['label'][:40]}</td><td style='text-align:center'>✅ Baik</td></tr>")
         pages.append("</table>")
 
         pages.append("<h3>🔻 5 Terburuk</h3><table><tr><th>#</th><th>Item</th><th>Status</th></tr>")
         for ii, it in rusak_items[:5]:
             di = db_items[ii]
             st = int(it.get("status","0"))
-            pages.append(f"<tr><td style='text-align:center'>{ii+1}</td><td>{di['cat']} — {di['label'][:40]}</td><td style='text-align:center'>{_lookup_status_label(st, di.get('options',[]))}</td></tr>")
+            pages.append(f"<tr><td style='text-align:center'>{ii+1}</td><td>{di['cat']} - {di['label'][:40]}</td><td style='text-align:center'>{_lookup_status_label(st, di.get('options',[]))}</td></tr>")
         pages.append("</table>")
 
         # ── Prioritas Perbaikan ──
@@ -3320,7 +3331,7 @@ tr:hover{background:#f1f5f9}
             weight = di.get("weight", 0) or 0
             prioritas = float(weight) * (sv / 4.0)
             prioritas_list.append((prioritas, i, sv, di))
-        
+
         prioritas_list.sort(key=lambda x: x[0], reverse=True)
         if prioritas_list:
             pages.append("<h3>📊 Prioritas Perbaikan</h3>")
@@ -3328,7 +3339,7 @@ tr:hover{background:#f1f5f9}
             for rank, (prior, i, sv, di) in enumerate(prioritas_list[:10], 1):
                 pct = round(prior * 100, 1)
                 bobot_pct = round(float(di.get("weight",0) or 0) * 100, 1)
-                pages.append(f"<tr><td style='text-align:center'>{rank}</td><td>{di['cat']} — {di['label'][:35]}</td><td style='text-align:center'>{bobot_pct}%</td><td style='text-align:center'>{_lookup_status_label(sv, di.get('options',[]))}</td><td style='text-align:center'>{pct}%</td><td style='font-size:6.5pt'>Prioritas perbaikan — item ini berbobot {bobot_pct}% tapi masih bermasalah</td></tr>")
+                pages.append(f"<tr><td style='text-align:center'>{rank}</td><td>{di['cat']} - {di['label'][:35]}</td><td style='text-align:center'>{bobot_pct}%</td><td style='text-align:center'>{_lookup_status_label(sv, di.get('options',[]))}</td><td style='text-align:center'>{pct}%</td><td style='font-size:6.5pt'>Prioritas perbaikan - item ini berbobot {bobot_pct}% tapi masih bermasalah</td></tr>")
             pages.append("</table>")
 
         # Detail per kategori
@@ -3337,7 +3348,7 @@ tr:hover{background:#f1f5f9}
         for ck in sorted(cat_data.keys()):
             cd = cat_data[ck]
             cpct = round(cd["baik"] / cd["total"] * 100, 1) if cd["total"] > 0 else 0
-            pages.append(f"<h3>{ck} — {cpct}%</h3>")
+            pages.append(f"<h3>{ck} - {cpct}%</h3>")
             pages.append("<table><tr><th>#</th><th>Pernyataan</th><th>Status</th><th>Foto</th><th>Deskripsi</th><th>Catatan</th></tr>")
             for ci in cd["items"]:
                 img_td = "<td style='text-align:center'>-</td>"
@@ -3370,7 +3381,7 @@ tr:hover{background:#f1f5f9}
             pages.append("<h1 style='font-size:13pt'>Lampiran Foto</h1>")
             for lf in lampiran_foto:
                 pages.append("<div class='lamp-item'>")
-                pages.append(f"<strong>{lf['cat']} — {lf['item'][:45]}</strong><br>")
+                pages.append(f"<strong>{lf['cat']} - {lf['item'][:45]}</strong><br>")
                 pages.append(f"<img src='data:image/jpeg;base64,{lf['b64']}'>")
                 if lf['desc']: pages.append(f"<div style='font-size:7pt;color:#555;'>{lf['desc'][:80]}</div>")
                 if lf['geo']: pages.append(f"<span style='font-size:6pt;color:#888;'>{lf['geo']}</span>")
@@ -3405,7 +3416,7 @@ tr:hover{background:#f1f5f9}
 
 @router.get("/survey/api/kantor-checklist/area-summary")
 async def area_summary_api(request: Request, session: Optional[str] = Cookie(None)):
-    """Ringkasan per area/wilayah — submitted/draft count + avg score."""
+    """Ringkasan per area/wilayah - submitted/draft count + avg score."""
     user = get_user_from_cookie(session)
     if not user:
         return JSONResponse({"ok": False, "error": "Not logged in"}, status_code=401)
@@ -3686,7 +3697,7 @@ async def findings_api(request: Request, session: Optional[str] = Cookie(None),
                         continue
                     item_label = ""
                     if idx < len(dbi):
-                        item_label = f"{dbi[idx].get('cat','')} — {dbi[idx].get('label','')}"
+                        item_label = f"{dbi[idx].get('cat','')} - {dbi[idx].get('label','')}"
                     if category and category not in item_label:
                         continue
                     findings.append({
@@ -3705,6 +3716,6 @@ async def findings_api(request: Request, session: Optional[str] = Cookie(None),
 
 @router.get("/survey/api/serve-pdf/{kantor_code}")
 async def serve_pdf_redirect(kantor_code: str):
-    """Redirect ke public PDF endpoint — ganti link di dashboard"""
+    """Redirect ke public PDF endpoint - ganti link di dashboard"""
     return HTMLResponse(f"<script>window.location.href='/survey/api/public/pdf/{kantor_code}?dl=1';</script>")
 

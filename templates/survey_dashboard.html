@@ -90,24 +90,32 @@ img.auto-orient { max-height:100px;object-fit:contain;background:#f1f5f9;border-
 
 <!-- no separate best/worst strip — merged into Per Item tab -->
 
-<!-- ── Feature #2: Area Summary Card ── -->
+<!-- ── Feature #2: Area Summary Card (with submit/draft/belum counts) ── -->
 {% if area_summaries %}
 <div style="background:white;border-radius:10px;padding:10px;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:8px;" class="area-summary">
   <div style="font-size:.8rem;font-weight:600;color:#0f172a;margin-bottom:6px;">📋 Ringkasan per Area</div>
   {% for area in area_summaries %}
-  <div style="margin:3px 0;padding:4px 0;">
-    <div style="display:flex;align-items:center;gap:6px;">
-      <span style="color:#64748b;font-size:.65rem;">├──</span>
+  <div style="margin:2px 0;padding:3px 0;">
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+      <span style="color:#64748b;font-size:.6rem;">├──</span>
       <span style="font-size:.7rem;font-weight:600;color:#0f172a;">{{ area.area_name }} ({{ area.area_code }})</span>
-      <span style="font-size:.7rem;font-weight:700;{% if area.avg_score is not none %}{% if area.avg_score >= 80 %}color:#166534;background:#dcfce7{% elif area.avg_score >= 60 %}color:#854d0e;background:#fef9c3{% else %}color:#991b1b;background:#fee2e2{% endif %}{% else %}color:#64748b;background:#f1f5f9{% endif %};padding:1px 6px;border-radius:4px;">{{ "%.1f"|format(area.avg_score) }}{% if area.avg_score is not none %}%{% else %}—{% endif %}</span>
-      <span style="font-size:.6rem;color:#64748b;">— {{ area.total }} cabang {% if area.submitted == area.total %}✅{% endif %}</span>
+      <span style="font-size:.65rem;font-weight:700;{% if area.avg_score is not none %}{% if area.avg_score >= 80 %}color:#166534;background:#dcfce7{% elif area.avg_score >= 60 %}color:#854d0e;background:#fef9c3{% else %}color:#991b1b;background:#fee2e2{% endif %}{% else %}color:#64748b;background:#f1f5f9{% endif %};padding:1px 6px;border-radius:4px;">{{ "%.1f"|format(area.avg_score) }}{% if area.avg_score is not none %}%{% else %}—{% endif %}</span>
+      <span style="font-size:.6rem;">✅ <strong style="color:#16a34a;">{{ area.submitted }}</strong> <span style="color:#64748b;">kirim</span></span>
+      {% if area.draft > 0 %}<span style="font-size:.6rem;">📝 <strong style="color:#ca8a04;">{{ area.draft }}</strong> <span style="color:#64748b;">isi</span></span>{% endif %}
+      {% if area.belum > 0 %}<span style="font-size:.6rem;color:#a0aec0;">⬜ <strong>{{ area.belum }}</strong> <span style="color:#a0aec0;">belum</span></span>{% endif %}
+      {% if area.total %}<span style="font-size:.6rem;color:#94a3b8;">({{ area.total }})</span>{% endif %}
+      {% if area.submitted == area.total %}<span>✅</span>{% endif %}
     </div>
     {% for wil in area.wilayahs %}
-    <div style="display:flex;align-items:center;gap:6px;margin-left:18px;">
-      <span style="color:#cbd5e1;font-size:.65rem;">├──</span>
+    <div style="display:flex;align-items:center;gap:6px;margin-left:20px;flex-wrap:wrap;">
+      <span style="color:#cbd5e1;font-size:.6rem;">├──</span>
       <span style="font-size:.65rem;color:#475569;">{{ wil.wilayah_name }} ({{ wil.wilayah_code }})</span>
-      <span style="font-size:.65rem;font-weight:600;{% if wil.avg_score is not none %}{% if wil.avg_score >= 80 %}color:#166534{% elif wil.avg_score >= 60 %}color:#854d0e{% else %}color:#991b1b{% endif %}{% else %}color:#64748b{% endif %};">{{ "%.1f"|format(wil.avg_score) }}{% if wil.avg_score is not none %}%{% else %}—{% endif %}</span>
-      <span style="font-size:.6rem;color:#94a3b8;">— {{ wil.total }} cabang</span>
+      <span style="font-size:.6rem;font-weight:600;{% if wil.avg_score is not none %}{% if wil.avg_score >= 80 %}color:#166534{% elif wil.avg_score >= 60 %}color:#854d0e{% else %}color:#991b1b{% endif %}{% else %}color:#64748b{% endif %};">{{ "%.1f"|format(wil.avg_score) }}{% if wil.avg_score is not none %}%{% else %}—{% endif %}</span>
+      <span style="font-size:.55rem;">✅ <strong style="color:#16a34a;">{{ wil.submitted }}</strong></span>
+      {% if wil.draft > 0 %}<span style="font-size:.55rem;color:#ca8a04;">📝 {{ wil.draft }}</span>{% endif %}
+      {% set wil_belum = wil.total - wil.submitted - wil.draft %}
+      {% if wil_belum > 0 %}<span style="font-size:.55rem;color:#a0aec0;">⬜ {{ wil_belum }}</span>{% endif %}
+      <span style="font-size:.55rem;color:#94a3b8;">({{ wil.total }})</span>
     </div>
     {% endfor %}
   </div>
