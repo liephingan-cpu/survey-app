@@ -82,9 +82,9 @@ img.auto-orient { max-height:100px;object-fit:contain;background:#f1f5f9;border-
     <div class="note">perlu segera diisi</div>
   </div>
   <div class="dash-card">
-    <h3>Rata-rata Skor <span id="trend-icon" style="font-size:.9rem;">{{ trend_icon }}</span></h3>
+    <h3>Rata-rata Skor</h3>
     <div class="num">{{ avg_main }}%</div>
-    <div class="note">{{ avg_dur }}{% if trend_icon == '📈' %} &#x2191;{% elif trend_icon == '📉' %} &#x2193;{% endif %}</div>
+    <div class="note">{{ avg_dur }}</div>
   </div>
 </div>
 
@@ -337,17 +337,7 @@ img.auto-orient { max-height:100px;object-fit:contain;background:#f1f5f9;border-
 <!-- Tab: Semua Session -->
 {% if user_id == '17012956' %}
 <div class="tab-panel" id="tab-session" style="display:none">
-<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
-  <input id="session-search" placeholder="Cari kode/PIC..." style="padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:.72rem;background:white;color:#334155;flex:1;min-width:120px;outline:none;">
-  <select id="session-filter-status" style="padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:.72rem;background:white;color:#334155;">
-    <option value="">Semua Status</option>
-    <option value="draft">📝 Draft</option>
-    <option value="submitted">✅ Diserahkan</option>
-    <option value="final">🏁 Final</option>
-  </select>
-  <span id="session-count" style="font-size:.68rem;color:#64748b;align-self:center;"></span>
-</div>
-<table class="item-table" id="session-table">
+<table class="item-table">
 <thead><tr>
   <th class="sort" onclick="sortT(this,0,'str')">Kantor</th>
   <th class="sort" onclick="sortT(this,1,'str')">PIC</th>
@@ -356,10 +346,10 @@ img.auto-orient { max-height:100px;object-fit:contain;background:#f1f5f9;border-
   <th class="sort" onclick="sortT(this,4,'num')">Skor</th>
   <th>Aksi</th>
 </tr></thead>
-<tbody id="session-tbody">
+<tbody>
 {% if all_sessions %}
 {% for m in all_sessions %}
-<tr data-code="{{ m.kode|lower }}" data-pic="{{ (m.pic|default(''))|lower }}" data-workflow="{{ m.workflow|default('') }}">
+<tr>
   <td>{{ m.kode }}</td>
   <td>{{ m.pic | default('-') }}</td>
   <td>{{ m.tgl[:10] if m.tgl else '-' }}</td>
@@ -475,31 +465,6 @@ function loadKantor(kode) {
       } else {
         document.getElementById('banding-items').innerHTML = '<div style="color:#94a3b8;font-size:.7rem;padding:8px;">Butuh minimal 2 survei untuk perbandingan</div>';
       }
-    })
-      // ── Feature #4: Grafik trend score ──
-      fetch('/survey/api/kantor-checklist/kantor-trend/' + encodeURIComponent(kode))
-        .then(function(r){ return r.json(); })
-        .then(function(td){
-          if(!td.ok || !td.scores || td.scores.length < 2) return;
-          var scs = td.scores;
-          var maxScore = 100;
-          var chartHtml = '<div style="margin-top:8px;"><div style="font-size:.7rem;font-weight:600;color:#0f172a;margin-bottom:4px;">📈 Trend Skor per Survey:</div><div style="display:flex;gap:4px;align-items:end;height:60px;padding:4px 0;">';
-          scs.forEach(function(s, si){
-            var pct = Math.min(s.score / maxScore * 100, 100);
-            var barColor = s.score >= 80 ? '#16a34a' : s.score >= 60 ? '#ca8a04' : '#dc2626';
-            chartHtml += '<div style="display:flex;flex-direction:column;align-items:center;flex:1;">';
-            chartHtml += '<div style="font-size:.55rem;color:#64748b;">' + s.survey_seq + '</div>';
-            chartHtml += '<div style="width:100%;max-width:30px;height:' + pct + '%;min-height:8px;background:' + barColor + ';border-radius:3px 3px 0 0;margin-top:2px;position:relative;">';
-            chartHtml += '<span style="position:absolute;top:-14px;left:0;right:0;text-align:center;font-size:.5rem;color:#334155;">' + s.score + '</span>';
-            chartHtml += '</div>';
-            chartHtml += '<div style="font-size:.45rem;color:#94a3b8;margin-top:2px;">' + (s.date || '').substring(5,10) + '</div>';
-            chartHtml += '</div>';
-          });
-          chartHtml += '</div></div>';
-          var ds = document.getElementById('detail-score');
-          if(ds) ds.innerHTML += chartHtml;
-        })
-        .catch(function(){});
     })
     .catch(function(e){ alert('Gagal: ' + e); });
 }
@@ -809,42 +774,6 @@ document.querySelectorAll('.tab-btn').forEach(function(b){
     }
   });
 });
-
-// ── Feature #5: Filter & Search di tab Semua Session ──
-function filterSessionTable() {
-  var q = (document.getElementById('session-search').value || '').toLowerCase();
-  var statusVal = document.getElementById('session-filter-status').value;
-  var tbody = document.getElementById('session-tbody');
-  if(!tbody) return;
-  var rows = tbody.querySelectorAll('tr');
-  var vis = 0;
-  rows.forEach(function(row){
-    if(row.classList.contains('empty')) return;
-    var code = (row.getAttribute('data-code') || '').toLowerCase();
-    var pic = (row.getAttribute('data-pic') || '').toLowerCase();
-    var wf = (row.getAttribute('data-workflow') || '').toLowerCase();
-    var show = true;
-    if(q && code.indexOf(q) < 0 && pic.indexOf(q) < 0) show = false;
-    if(statusVal && wf !== statusVal) show = false;
-    row.style.display = show ? '' : 'none';
-    if(show) vis++;
-  });
-  var cnt = document.getElementById('session-count');
-  if(cnt) cnt.textContent = vis + ' dari ' + rows.length + ' session';
-}
-
-// Event listeners for session filter
-function initSessionFilter() {
-  var searchEl = document.getElementById('session-search');
-  var statusEl = document.getElementById('session-filter-status');
-  if(!searchEl || !statusEl) return;
-  searchEl.addEventListener('input', filterSessionTable);
-  statusEl.addEventListener('change', filterSessionTable);
-  // Initial count
-  filterSessionTable();
-}
-
-document.addEventListener('DOMContentLoaded', initSessionFilter);
 
 // Sort function: pure vanilla, no framework
 function sortT(header, colIdx, type) {

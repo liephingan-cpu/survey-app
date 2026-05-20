@@ -19,6 +19,11 @@ from templates import TemplateResponse
 _APP_DIR = Path(__file__).resolve().parent
 load_dotenv(_APP_DIR / ".env", override=False)
 
+# Load Oracle creds dari origo_bots/.env (FAST_USER, FAST_PASS, FAST_SERVICE, dll)
+_origo_bots_env = Path("/home/bhc0104/origo_bots/.env")
+if _origo_bots_env.exists():
+    load_dotenv(_origo_bots_env, override=True)
+
 JWT_SECRET = os.getenv("ORIGO_FLASK_SECRET", "survey-app-default-secret-2026")
 JWT_ALGO = "HS256"
 JWT_EXPIRY_HOURS = 8
@@ -39,31 +44,32 @@ def get_db():
 
 
 # ── Oracle login ──
-_DB_USER = os.getenv("FAST_JKT_DB_USER", "")
-_DB_PASS = os.getenv("FAST_JKT_DB_PASS", "")
-_DB_DSN = os.getenv("FAST_JKT_DB_DSN", "")
-_ORACLE_OK = bool(_DB_USER and _DB_PASS and _DB_DSN)
-
-
 def _oracle_login(user_id_val: str, password: str) -> Optional[dict]:
-    if not _ORACLE_OK:
-        return None
+    """Login via Oracle langsung. Query - cocokin password - return."""
     try:
         import oracledb
-        conn = oracledb.connect(user=_DB_USER, password=_DB_PASS, dsn=_DB_DSN)
+        _olib = os.getenv("ORACLE_INSTANT_CLIENT_DIR", "/opt/oracle/instantclient_21_1")
+        oracledb.init_oracle_client(lib_dir=_olib)
+        _ouser = os.getenv("FAST_USER", "bhcro")
+        _opass = os.getenv("FAST_PASS", "")
+        _ohost = os.getenv("FAST_TUNNEL_HOST", "127.0.0.1")
+        _oport = os.getenv("FAST_TUNNEL_PORT", "1522")
+        _osvc  = os.getenv("FAST_SERVICE", "FSMG1")
+        _odsn  = f"{_ohost}:{_oport}/{_osvc}"
+        conn = oracledb.connect(user=_ouser, password=_opass, dsn=_odsn)
         cur = conn.cursor()
         cur.execute(
-            "SELECT enkripsi.decrypt(pwd,'FIFGROUP') as pwd, user_id, fullname, role "
-            "FROM fifapps.fs_sec_users WHERE user_id=:1",
+            "SELECT USER_ID AS username, USER_NAME AS fullname, enkripsi.decak(USER_PWD) AS password "
+            "FROM fifapps.fs_sec_users WHERE USER_ID=:1",
             (user_id_val,),
         )
         row = cur.fetchone()
         cur.close()
         conn.close()
-        if row and row[0] == password:
-            return {"user_id": str(row[1]), "fullname": row[2], "role": row[3]}
-    except Exception:
-        pass
+        if row and row[0] == user_id_val and row[2] == password:
+            return {"user_id": row[0], "fullname": row[1], "role": ""}
+    except:
+        pass  # Oracle gagal? fallback ke lokal
     return None
 
 

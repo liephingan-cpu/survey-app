@@ -1261,46 +1261,11 @@ async def survey_dashboard(request: Request, session: Optional[str] = Cookie(Non
     except Exception:
         pass
 
-    # ── Trend: membaik/memburuk/stabil — bandingkan skor antar survey (Feature #3) ──
-    trend_icon = "➡️"
-    try:
-        conn_tr = get_db(); cur_tr = conn_tr.cursor()
-        cur_tr.execute(
-            """SELECT kantor_code, survey_seq, weighted_score
-               FROM origo.kantor_checklist_data
-               WHERE yes_count IS NOT NULL AND total_items > 0 AND weighted_score IS NOT NULL
-               ORDER BY kantor_code, survey_seq ASC"""
-        )
-        kantor_scores = {}
-        for r_tr in cur_tr.fetchall():
-            kc_tr, seq_tr, ws_tr = r_tr
-            if kc_tr not in kantor_scores:
-                kantor_scores[kc_tr] = []
-            kantor_scores[kc_tr].append(float(ws_tr))
-        cur_tr.close(); conn_tr.close()
-        
-        better = 0
-        worse = 0
-        for kc_tr, scs in kantor_scores.items():
-            if len(scs) >= 2:
-                if scs[-1] > scs[-2]:
-                    better += 1
-                elif scs[-1] < scs[-2]:
-                    worse += 1
-        if better > worse:
-            trend_icon = "📈"
-        elif worse > better:
-            trend_icon = "📉"
-        else:
-            trend_icon = "➡️"
-    except Exception:
-        trend_icon = "➡️"
-
     ctl = _get_cat_names()
 
     import json
     item_kantors_json_str = json.dumps(kantor_breakdown, default=str)
-    return TemplateResponse("survey_dashboard.html", {"request": request, "user_id": user["user_id"], "user_name": user["fullname"], "fullname": user["fullname"], "fullname": user["fullname"], "user_role": user.get("role",""), "current_path": "/survey/kantor-checklist/dashboard", "total_branches": total_branches, "done_main": done_main, "done_submit": done_submit, "done_draft": done_draft, "done_mt": done_mt, "merged": merged, "top5": top5, "worst5": worst5, "problem_items": problem_items, "best_items": best_items, "worst_items": worst_items, "terbaru": latest, "merged_with_score": mws, "scores_list": sl, "draft_list": dr, "avg_dur": avg_dur, "avg_main": avg_main, "k": ctl, "v": ctl, "cat_names": ctl, "all_sessions": all_sessions, "menu_items": _get_menu(), "foto_warnings": foto_warnings_list, "foto_referensi": foto_referensi, "db_items_ref": dbi_fw, "item_kantors_json": item_kantors_json_str, "trend_icon": trend_icon})
+    return TemplateResponse("survey_dashboard.html", {"request": request, "user_id": user["user_id"], "user_name": user["fullname"], "fullname": user["fullname"], "fullname": user["fullname"], "user_role": user.get("role",""), "current_path": "/survey/kantor-checklist/dashboard", "total_branches": total_branches, "done_main": done_main, "done_submit": done_submit, "done_draft": done_draft, "done_mt": done_mt, "merged": merged, "top5": top5, "worst5": worst5, "problem_items": problem_items, "best_items": best_items, "worst_items": worst_items, "terbaru": latest, "merged_with_score": mws, "scores_list": sl, "draft_list": dr, "avg_dur": avg_dur, "avg_main": avg_main, "k": ctl, "v": ctl, "cat_names": ctl, "all_sessions": all_sessions, "menu_items": _get_menu(), "foto_warnings": foto_warnings_list, "foto_referensi": foto_referensi, "db_items_ref": dbi_fw, "item_kantors_json": item_kantors_json_str})
 
 @router.get("/survey/api/kantor-checklist/dashboard-data")
 async def dashboard_data_api(request: Request, session: Optional[str] = Cookie(None), cat: str = Query(""), item: str = Query(""), kantor_code: str = Query("")):
@@ -3430,55 +3395,6 @@ async def log_share_api(request: Request, session: Optional[str] = Cookie(None))
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:100]}, status_code=500)
     return JSONResponse({"ok": True})
-
-
-@router.get("/survey/api/kantor-checklist/kantor-trend/{kantor_code}")
-async def kantor_trend(request: Request, kantor_code: str, session: Optional[str] = Cookie(None)):
-    """Ambil trend score per survey untuk sebuah kantor (Feature #4)."""
-    user = get_user_from_cookie(session)
-    if not user:
-        return JSONResponse({"ok": False, "error": "Not logged in"}, status_code=401)
-    try:
-        conn = get_db(); cur = conn.cursor()
-        cur.execute(
-            """SELECT survey_seq, weighted_score, created_at
-               FROM origo.kantor_checklist_data
-               WHERE kantor_code = %s AND yes_count IS NOT NULL AND total_items > 0
-               ORDER BY survey_seq ASC""",
-            (kantor_code,)
-        )
-        scores = []
-        for r in cur.fetchall():
-            seq, ws_raw, ca = r
-            ws = float(ws_raw) if ws_raw is not None else 0
-            scores.append({
-                "survey_seq": seq,
-                "score": round(ws, 1),
-                "date": str(ca)[:10] if ca else "-"
-            })
-        cur.close(); conn.close()
-        # Jika weighted_score NULL, hitung manual
-        if not scores:
-            conn = get_db(); cur = conn.cursor()
-            cur.execute(
-                """SELECT survey_seq, yes_count, total_items, created_at
-                   FROM origo.kantor_checklist_data
-                   WHERE kantor_code = %s AND yes_count IS NOT NULL AND total_items > 0
-                   ORDER BY survey_seq ASC""",
-                (kantor_code,)
-            )
-            for r in cur.fetchall():
-                seq, yes, tot, ca = r
-                sc = round(float(yes) / float(tot) * 100, 1) if float(tot) > 0 else 0
-                scores.append({
-                    "survey_seq": seq,
-                    "score": sc,
-                    "date": str(ca)[:10] if ca else "-"
-                })
-            cur.close(); conn.close()
-        return {"ok": True, "kantor_code": kantor_code, "scores": scores}
-    except Exception as e:
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
 @router.get("/survey/api/serve-pdf/{kantor_code}")

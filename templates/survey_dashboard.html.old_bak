@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>📊 Rekap Ceklist Kantor</title>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+<style>
+body { margin:0; padding:0; background:#f1f5f9; font-family:system-ui; }
+.top-bar { background:#0f172a; color:#e2e8f0; padding:.7rem 1rem; display:flex; justify-content:space-between; align-items:center; font-size:.85rem; }
+.nav-link { color:#93c5fd; text-decoration:none; font-size:.8rem; padding:.25rem .5rem; border-radius:4px; transition:background .15s; }
+.nav-link:hover { background:rgba(255,255,255,.1); color:#fff; }
+
+.tab-container { max-width:960px; margin:0 auto; padding:12px 16px 40px; position:relative; }
+.tab-header { display:flex; gap:6px; border-bottom:2px solid #e5e7eb; margin-bottom:20px; }
+.tab-pane { position:relative; }
+.sortable { cursor:pointer; user-select:none; }
+.sortable:hover { background:#f3f4f6; }
+.sort-arrow { font-size:9px; color:#9ca3af; display:inline-block; width:10px; }
+.sort-asc .sort-arrow, .sort-desc .sort-arrow { color:#6366f1; }
+.sort-asc .sort-arrow::after { content:'▲'; }
+.sort-desc .sort-arrow::after { content:'▼'; }
+.tab-btn { padding:10px 20px; font-size:14px; font-weight:600; border:none; background:white; color:#6b7280; cursor:pointer; transition:all .2s; }
+.tab-btn:hover { color:#4f46e5; }
+.tab-btn.active { color:#4f46e5; border-bottom:3px solid #6366f1; margin-bottom:-2px; }
+.tab-content { display:none; padding:16px 0; min-height:200px; }
+.dash-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin-bottom:20px; }
+.dash-card { background:#fff; border-radius:12px; padding:16px; box-shadow:0 1px 4px rgba(0,0,0,.07); }
+.dash-card h3 { margin:0 0 4px; font-size:13px; color:#6b7280; font-weight:500; }
+.dash-card .num { font-size:28px; font-weight:700; }
+.dash-card .sub { font-size:11px; color:#9ca3af; margin-top:2px; }
+.score-ring { display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; border-radius:50%; font-size:11px; font-weight:700; color:#fff; flex-shrink:0; }
+.rank-badge { display:inline-flex; width:20px; height:20px; align-items:center; justify-content:center; border-radius:50%; font-size:10px; font-weight:700; color:#fff; }
+.rank-1 { background:#f59e0b; }
+.rank-2 { background:#9ca3af; }
+.rank-3 { background:#d97706; }
+.filter-bar { background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:12px; margin-bottom:16px; }
+.scroll-table { max-height:400px; overflow-y:auto; border:1px solid #e5e7eb; border-radius:8px; }
+.item-table { width:100%; border-collapse:collapse; font-size:12px; }
+.item-table th { background:#f9fafb; position:sticky; top:0; z-index:1; padding:8px 10px; text-align:left; font-weight:600; color:#6b7280; border-bottom:2px solid #e5e7eb; }
+.item-table td { padding:7px 10px; border-bottom:1px solid #f3f4f6; }
+.item-table tr:hover td { background:#f9fafb; }
+.bar-wrap { height:6px; background:#f3f4f6; border-radius:3px; overflow:hidden; }
+.bar-fill { height:100%; border-radius:3px; transition:width .3s; }
+.branch-table { width:100%; border-collapse:collapse; font-size:12px; }
+.branch-table th { background:#f9fafb; position:sticky; top:0; z-index:1; padding:8px 10px; text-align:left; font-weight:600; color:#6b7280; border-bottom:2px solid #e5e7eb; }
+.branch-table td { padding:7px 10px; border-bottom:1px solid #f3f4f6; }
+.branch-table tr:hover td { background:#f9fafb; }
+.status-tag { display:inline-block; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:600; }
+.st-submit { background:#d1fae5; color:#065f46; }
+.st-draft { background:#fef9c3; color:#854d0e; }
+.st-belum { background:#f3f4f6; color:#6b7280; }
+.detail-box { background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:12px; margin-bottom:12px; }
+.branch-rank-row { display:flex; align-items:center; gap:8px; padding:4px 0; font-size:12px; border-bottom:1px solid #f9fafb; }
+</style>
+
+
+
+<div class="tab-container">
+  <h2 style="font-size:20px;margin:0 0 4px;">📊 Rekap Ceklist Kantor</h2>
+  <p style="font-size:12px;color:#6b7280;margin:0 0 16px;">Ringkasan penilaian kelayakan outlet</p>
+
+  <!-- ═══ OVERVIEW — TETAP DI SEMUA TAB ═══ -->
+  <div class="dash-grid">
+    <div class="dash-card">
+      <h3>🏪 Total Cabang</h3>
+      <div class="num">{{ total_branches }}</div>
+      <div class="sub">dari master data</div>
+    </div>
+    <div class="dash-card">
+      <h3>✅ Sudah Dinilai</h3>
+      <div class="num" style="color:#059669;">{{ done_main }}</div>
+      <div class="sub">{{ "%.0f"|format(done_main/total_branches*100) if total_branches > 0 else "0" }}%</div>
+    </div>
+    <div class="dash-card">
+      <h3>⬜ Belum Pernah</h3>
+      <div class="num" style="color:#f97316;">{{ total_branches - done_main }}</div>
+      <div class="sub">perlu segera diisi</div>
+    </div>
+    <div class="dash-card">
+      <h3>📊 Rata-rata Skor</h3>
+      {% set scores_list = merged|selectattr('main','ne',None)|map(attribute='main')|list %}
+      {% set avg_main = (scores_list|sum / scores_list|length)|round(1) if scores_list|length > 0 else 0 %}
+      <div class="num" style="color:#6366f1;">{{ avg_main }}%</div>
+      <div class="sub">{{ scores_list|length }} cabang terdata</div>
+    </div>
+  </div>
+
+  <!-- Cabang Tertinggi / Terendah / Tercepat / Terlambat — TETAP -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
+    <div class="dash-card">
+      <h3>🥇 5 Cabang Tertinggi</h3>
+      {% if top5 %}
+      {% set ranked = top5|list %}
+      {% for b in ranked[:5] %}
+      <div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:11px;border-bottom:1px solid #f9fafb;">
+        <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><strong>{{ loop.index }}.</strong> {{ b.label }}</span>
+        <span class="score-ring" style="width:22px;height:22px;font-size:8px;background:{% if b.main >= 85 %}#059669{% elif b.main >= 65 %}#f59e0b{% elif b.main >= 45 %}#f97316{% else %}#ef4444{% endif %};">{{ b.main }}</span>
+      </div>
+      {% endfor %}
+      {% endif %}
+    </div>
+    <div class="dash-card">
+      <h3>🤦 5 Cabang Terendah</h3>
+      {% if worst5 %}
+      {% set ranked = worst5|list %}
+      {% for b in ranked[:5] %}
+      <div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:11px;border-bottom:1px solid #f9fafb;">
+        <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><strong>{{ loop.index }}.</strong> {{ b.label }}</span>
+        <span class="score-ring" style="width:22px;height:22px;font-size:8px;background:{% if b.main >= 85 %}#059669{% elif b.main >= 65 %}#f59e0b{% elif b.main >= 45 %}#f97316{% else %}#ef4444{% endif %};">{{ b.main }}</span>
+      </div>
+      {% endfor %}
+      {% endif %}
+    </div>
+    <div class="dash-card">
+      <h3>⚡ 5 Tercepat Isi</h3>
+      {% if top5 %}
+      {% set by_durasi = merged|selectattr('main_durasi','ne',None)|sort(attribute='main_durasi')|list %}
+      {% for b in by_durasi[:5] %}
+      <div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:11px;border-bottom:1px solid #f9fafb;">
+        <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ b.label }}</span>
+        <strong style="color:#059669;">{{ b.main_durasi }} mnt</strong>
+      </div>
+      {% endfor %}
+      {% endif %}
+    </div>
+    <div class="dash-card">
+      <h3>🐌 5 Terlambat Isi</h3>
+      {% if top5 %}
+      {% set by_durasi = merged|selectattr('main_durasi','ne',None)|sort(attribute='main_durasi', reverse=true)|list %}
+      {% for b in by_durasi[:5] %}
+      <div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:11px;border-bottom:1px solid #f9fafb;">
+        <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ b.label }}</span>
+        <strong style="color:#ef4444;">{{ b.main_durasi }} mnt</strong>
+      </div>
+      {% endfor %}
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ═══ TAB HEADER ═══ -->
+  <div class="tab-header">
+    <button class="tab-btn active" data-tab="items">📋 Per Item</button>
+    <button class="tab-btn" data-tab="branches">🏢 Per Cabang</button>
+    {% if user_id == '17012956' %}<button class="tab-btn" data-tab="allsessions">📦 Semua Session</button>{% endif %}
+  </div>
+
+  <!-- ═══ TAB ITEMS ═══ -->
+  <div id="tab-items" class="tab-pane">
+    <!-- Search + filter -->
+    <div class="filter-bar" style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;">
+      <div>
+        <label style="display:block;font-size:11px;color:#6b7280;margin-bottom:2px;">🔍 Cari Item</label>
+        <input id="item-search" type="text" placeholder="Cari item..." oninput="renderItemTable()" style="padding:6px 12px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;min-width:150px;">
+      </div>
+      <div>
+        <label style="display:block;font-size:11px;color:#6b7280;margin-bottom:2px;">Kategori</label>
+        <select id="filter-cat" onchange="onCatChange()" style="padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;">
+          <option value="">- Semua Kategori -</option>
+          {% for k,v in {'A':'Lokasi & Akses','B':'Identitas & Visibilitas','C':'Ruang Konsumen','D':'Fasilitas Karyawan','E':'Alat Kerja','F':'Keamanan & Barang Sitaan','G':'Dokumen & Regulasi'}.items() %}
+          <option value="{{ k }}">[{{ k }}] {{ v }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label style="display:block;font-size:11px;color:#6b7280;margin-bottom:2px;">Item Spesifik</label>
+        <select id="filter-item" onchange="renderItemTable()" style="padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;">
+          <option value="">- Semua Item -</option>
+        </select>
+      </div>
+      <div>
+        <label style="display:block;font-size:11px;color:#6b7280;margin-bottom:2px;">Status</label>
+        <select id="filter-status" onchange="renderItemTable()" style="padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;">
+          <option value="">Semua Status</option>
+          <option value="submitted">✅ Sudah Submit</option>
+          <option value="draft">🔄 Draft</option>
+          <option value="belum">⬜ Belum</option>
+        </select>
+      </div>
+      <button onclick="resetFilters()" style="padding:6px 12px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;background:white;cursor:pointer;">🔄 Reset</button>
+    </div>
+
+    <!-- Tabel Item -->
+    <div class="scroll-table">
+      <table class="item-table">
+        <thead>
+          <tr><th data-sort="idx" class="sortable"># <span class="sort-arrow"></span></th><th data-sort="kat" class="sortable">Kat <span class="sort-arrow"></span></th><th data-sort="item" class="sortable">Item <span class="sort-arrow"></span></th><th data-sort="bobot" class="sortable">Bobot <span class="sort-arrow"></span></th><th data-sort="rata" class="sortable">Rata² <span class="sort-arrow"></span></th><th data-sort="layak" class="sortable">✅ Layak <span class="sort-arrow"></span></th><th data-sort="tdkada" class="sortable">❌ Tdk Ada <span class="sort-arrow"></span></th></tr>
+        </thead>
+        <tbody>
+{{ item_rows_html | safe }}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Detail section -->
+    <div id="detail-section" style="display:none;margin-top:16px;">
+      <h3 id="detail-label" style="font-size:14px;margin:0 0 8px;"></h3>
+      <div id="detail-content"></div>
+    </div>
+
+    <div style="margin-top:8px;font-size:11px;color:#9ca3af;">
+      Keterangan: <span class="score-ring" style="width:14px;height:14px;font-size:6px;background:#059669;">85</span> &gt;85
+      <span class="score-ring" style="width:14px;height:14px;font-size:6px;background:#f59e0b;">75</span> 65-84
+      <span class="score-ring" style="width:14px;height:14px;font-size:6px;background:#f97316;">55</span> 45-64
+      <span class="score-ring" style="width:14px;height:14px;font-size:6px;background:#ef4444;">35</span> &lt;45
+    </div>
+  </div>
+
+  <!-- ═══ TAB PER CABANG ═══ -->
+  <div id="tab-branches" class="tab-pane" style="display:none;">
+    <div style="margin-bottom:10px;font-size:12px;color:#6b7280;display:flex;flex-wrap:wrap;gap:12px;">
+      {% set merged_with_score = merged|selectattr('main','ne',None)|list %}
+      {% set draft_list = merged|selectattr('main_workflow','eq','draft')|list %}
+      {% set durasi_list = merged|selectattr('main_durasi','ne',None)|map(attribute='main_durasi')|list %}
+      <span>✅ <strong>{{ merged_with_score|length }}</strong> sudah dinilai</span>
+      <span>🔄 <strong>{{ draft_list|length }}</strong> sedang diisi</span>
+      <span>⬜ <strong>{{ total_branches - merged_with_score|length }}</strong> belum pernah</span>
+      {% if durasi_list|length > 0 %}
+      {% set avg_dur = (durasi_list|sum / durasi_list|length)|round|int %}
+      <span>⏱️ Rata-rata <strong>{{ avg_dur }} mnt</strong></span>
+      {% endif %}
+    </div>
+    <div style="margin-bottom:10px;">
+      <input id="branch-search" type="text" placeholder="🔍 Cari kantor..." oninput="filterBranchTable()" style="padding:6px 12px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;width:100%;max-width:300px;">
+    </div>
+    <div class="scroll-table">
+      <table class="branch-table" id="branch-table">
+        <thead><tr><th data-sort="kantor" class="sortable">Kantor <span class="sort-arrow"></span></th><th data-sort="skor" class="sortable" style="width:75px">Skor <span class="sort-arrow"></span></th><th data-sort="status" class="sortable" style="width:80px">Status <span class="sort-arrow"></span></th><th data-sort="durasi" class="sortable" style="width:70px">Durasi <span class="sort-arrow"></span></th><th data-sort="tgl" class="sortable" style="width:80px">Tgl <span class="sort-arrow"></span></th><th style="width:50px">PDF</th></tr></thead>
+        <tbody>
+          {% for b in merged %}
+          <tr>
+            <td><strong style="font-size:12px;">{{ b.label }}</strong><br><span style="font-size:10px;color:#9ca3af;">{{ b.kode }}</span></td>
+            <td>
+              {% if b.main is not none %}
+              <span class="score-ring" style="width:30px;height:30px;font-size:10px;background:{% if b.main >= 85 %}#059669{% elif b.main >= 65 %}#f59e0b{% elif b.main >= 45 %}#f97316{% else %}#ef4444{% endif %};">{{ b.main }}</span>
+              {% else %}
+              <span style="color:#d1d5db;">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if b.main_workflow == 'submitted' %}<span class="status-tag st-submit">✅ Submit</span>
+              {% elif b.main_workflow == 'draft' %}<span class="status-tag st-draft">🔄 Draft</span>
+              {% else %}<span class="status-tag st-belum">⬜ Belum</span>
+              {% endif %}
+            </td>
+            <td style="font-size:11px;color:#6b7280;">{% if b.main_durasi is not none %}{{ b.main_durasi }} mnt{% else %}—{% endif %}</td>
+            <td style="font-size:11px;color:#6b7280;">{{ b.main_tgl or '—' }}</td>
+            <td style="text-align:center;">
+              {% if b.main_workflow == 'submitted' or b.main_workflow == 'approved' %}
+              <a href="/survey/api/kantor-checklist/export-pdf?kantor_code={{ b.kode }}" target="_blank" style="padding:2px 6px;font-size:10px;border:1px solid #818cf8;border-radius:4px;background:#eef2ff;color:#4f46e5;text-decoration:none;">📄</a>
+              {% else %}
+              <span style="color:#d1d5db;">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══ TAB SEMUA SESSION ═══ -->
+  <div id="tab-allsessions" class="tab-pane" style="display:none;">
+    <div style="margin-bottom:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      <input id="as-search" type="text" placeholder="🔍 Cari..." oninput="filterAllSessions()" style="padding:6px 12px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;flex:1;min-width:150px;">
+      <select id="as-status" onchange="filterAllSessions()" style="padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;">
+        <option value="">Semua</option>
+        <option value="submitted">✅ Submit</option>
+        <option value="draft">🔄 Draft</option>
+      </select>
+      <span id="as-total" style="font-size:12px;color:#6b7280;">0</span>
+    </div>
+    <div class="scroll-table">
+      <table class="branch-table">
+        <thead><tr><th data-sort="kantor" class="sortable">Kantor <span class="sort-arrow"></span></th><th data-sort="skor" class="sortable" style="width:75px">Skor <span class="sort-arrow"></span></th><th data-sort="status" class="sortable" style="width:80px">Status <span class="sort-arrow"></span></th><th data-sort="durasi" class="sortable" style="width:70px">Durasi <span class="sort-arrow"></span></th><th data-sort="pic" class="sortable" style="width:60px">PIC <span class="sort-arrow"></span></th><th data-sort="tgl" class="sortable" style="width:80px">Tgl <span class="sort-arrow"></span></th>{% if user_id == '17012956' %}<th style="width:60px">Aksi</th>{% endif %}</tr></thead>
+        <tbody id="as-tbody">
+          <tr><td colspan="7" style="text-align:center;padding:20px;color:#9ca3af;">Memuat...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  var allItems = [];
+  var allSessions = [];
+
+  // ════════ UTILITY ════════
+  var $ = function(id) { return document.getElementById(id); };
+
+  var scoreBg = function(pct) {
+    if (pct >= 85) return '#059669';
+    if (pct >= 65) return '#f59e0b';
+    if (pct >= 45) return '#f97316';
+    return '#ef4444';
+  };
+
+  // ════════ SORTING UTILITY ════════
+  var sortState = {};
+  var tableSortFunctions = {};
+
+  var sortTable = function(tableId, sortKey, getCellVal) {
+    var table = document.getElementById(tableId);
+    if (!table) return;
+    var tbody = table.querySelector('tbody');
+    if (!tbody) return;
+
+    var current = sortState[tableId] || {};
+    if (current.key === sortKey) {
+      current.asc = !current.asc;
+    } else {
+      current.key = sortKey;
+      current.asc = true;
+    }
+    sortState[tableId] = current;
+
+    // Update arrow
+    table.querySelectorAll('thead th.sortable').forEach(function(th) {
+      th.classList.remove('sort-asc', 'sort-desc');
+      if (th.getAttribute('data-sort') === sortKey) {
+        th.classList.add(current.asc ? 'sort-asc' : 'sort-desc');
+      }
+    });
+
+    var rows = Array.from(tbody.querySelectorAll('tr'));
+    if (!rows.length || rows[0].children.length <= 1 || rows[0].querySelector('td[colspan]')) return;
+
+    rows.sort(function(a, b) {
+      var va = getCellVal ? getCellVal(a, sortKey) : (a.children[0] ? a.children[0].textContent.trim() : '');
+      var vb = getCellVal ? getCellVal(b, sortKey) : (b.children[0] ? b.children[0].textContent.trim() : '');
+      // Numeric check
+      var na = parseFloat(va), nb = parseFloat(vb);
+      if (!isNaN(na) && !isNaN(nb)) {
+        return current.asc ? na - nb : nb - na;
+      }
+      return current.asc ? va.localeCompare(vb) : vb.localeCompare(va);
+    });
+
+    rows.forEach(function(r) { tbody.appendChild(r); });
+  };
+
+  // Gunakan event delegation — satu listener untuk semua th.sortable di semua tabel
+  document.addEventListener('click', function(e) {
+    var th = e.target.closest('th.sortable');
+    if (!th) return;
+    var table = th.closest('table');
+    if (!table) return;
+    var tableId = table.id;
+    if (!tableId) {
+      // Fallback: assign ID from name lookup
+      if (table.classList.contains('branch-table')) {
+        tableId = table.id = 'table_' + Math.random().toString(36).slice(2,8);
+      } else {
+        return;
+      }
+    }
+    var sortKey = th.getAttribute('data-sort');
+    var getCellVal = tableSortFunctions[tableId];
+    sortTable(tableId, sortKey, getCellVal);
+  });
+
+  var initTableSort = function(tableId, getCellVal) {
+    // Just register the sort function — no need for per-th listeners
+    if (getCellVal) tableSortFunctions[tableId] = getCellVal;
+  };
+
+  var showToast = function(msg, type) {
+    var el = document.createElement('div');
+    el.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:9999;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,.15);';
+    el.style.background = type === 'danger' ? '#fee2e2' : '#d1fae5';
+    el.style.color = type === 'danger' ? '#991b1b' : '#065f46';
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(function() { el.style.opacity = '0'; setTimeout(function() { el.remove(); }, 300); }, 3000);
+  };
+
+  // ════════ TAB SWITCHING ════════
+  var switchTab = function(tab) {
+    try {
+      var panes = document.querySelectorAll('.tab-pane');
+      panes.forEach(function(p) { p.style.display = 'none'; });
+      var target = document.getElementById('tab-' + tab);
+      if (target) target.style.display = 'block';
+
+      var btns = document.querySelectorAll('.tab-btn');
+      btns.forEach(function(b) {
+        if (b.getAttribute('data-tab') === tab) {
+          b.classList.add('active');
+        } else {
+          b.classList.remove('active');
+        }
+      });
+
+      if (tab === 'items' && !allItems.length) loadItemData();
+      if (tab === 'allsessions') loadAllSessions();
+    } catch(e) {
+      console.error('[Tab] Error:', e);
+    }
+  };
+
+  // Attach tab listeners
+  document.querySelectorAll('.tab-btn').forEach(function(b) {
+    b.addEventListener('click', function() {
+      switchTab(this.getAttribute('data-tab'));
+    });
+  });
+
+  // ════════ FILTER ════════
+  var onCatChange = function() {
+    $('filter-item').value = '';
+    loadItemData();
+  };
+
+  var resetFilters = function() {
+    $('filter-cat').value = '';
+    $('filter-item').value = '';
+    $('filter-status').value = '';
+    $('item-search').value = '';
+    renderItemTable();
+  };
+
+  // ════════ LOAD ITEM DATA ════════
+  var loadItemData = function() {
+    var cat = $('filter-cat').value;
+    var item = $('filter-item').value;
+    var params = '?cat=' + encodeURIComponent(cat) + '&item=' + encodeURIComponent(item);
+
+    $('item-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#9ca3af;">🔄 Memuat...</td></tr>';
+    $('detail-section').style.display = 'none';
+
+    fetch('/survey/api/kantor-checklist/dashboard-data' + params)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data.ok) {
+          $('item-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#ef4444;">❌ ' + (data.error || 'Gagal') + '</td></tr>';
+          return;
+        }
+
+        // Populate item filter dropdown
+        var itemSel = $('filter-item');
+        var currentVal = itemSel.value;
+        itemSel.innerHTML = '<option value="">- Semua Item -</option>';
+        data.items.forEach(function(it) {
+          var opt = document.createElement('option');
+          opt.value = it.idx;
+          opt.textContent = '[' + it.cat + '] ' + it.label;
+          if (opt.value === currentVal) opt.selected = true;
+          itemSel.appendChild(opt);
+        });
+
+        allItems = data.items;
+        renderItemTable();
+      })
+      .catch(function(e) {
+        $('item-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#ef4444;">❌ ' + e.message + '</td></tr>';
+      });
+  };
+
+  var renderTable = function(items, statusFilter) {
+    var tbody = $('item-tbody');
+    if (!items || !items.length) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#9ca3af;">Tidak ada data</td></tr>';
+      return;
+    }
+    var h = '';
+    items.forEach(function(it, i) {
+      var avg = it.avg_score || 0;
+      var passPct = it.total_dinilai > 0 ? Math.round(it.layak / it.total_dinilai * 100) : 0;
+      var failPct = it.total_dinilai > 0 ? Math.round(it.tidak_ada / it.total_dinilai * 100) : 0;
+      h += '<tr onclick="showDetail(' + i + ')" style="cursor:pointer;">';
+      h += '<td>' + (i + 1) + '</td>';
+      h += '<td><span class="cat-tag" style="display:inline-flex;width:18px;height:18px;align-items:center;justify-content:center;border-radius:3px;font-size:8px;font-weight:700;color:#fff;background:#6366f1;">' + it.cat + '</span></td>';
+      h += '<td>' + (it.label || '-') + '</td>';
+      h += '<td>' + (it.weight || '-') + '</td>';
+      h += '<td><strong style="color:' + scoreBg(avg) + ';">' + avg.toFixed(1) + '%</strong></td>';
+      h += '<td>' + (it.layak || 0) + ' <span style="color:#6b7280;font-size:10px;">(' + passPct + '%)</span></td>';
+      h += '<td>' + (it.tidak_ada || 0) + ' <span style="color:#6b7280;font-size:10px;">(' + failPct + '%)</span></td>';
+      h += '</tr>';
+    });
+    tbody.innerHTML = h;
+  };
+
+  var showDetail = function(idx) {
+    var item = null;
+    for (var i = 0; i < allItems.length; i++) {
+      if (i === idx) { item = allItems[i]; break; }
+    }
+    if (!item) return;
+
+    var topH = '<strong style="font-size:13px;">🏆 Ranking Tertinggi</strong>';
+    var botH = '<strong style="font-size:13px;margin-top:12px;display:block;">⚠️ Ranking Terendah</strong>';
+
+    if (item.top_branches && item.top_branches.length) {
+      item.top_branches.forEach(function(b) {
+        topH += '<div class="branch-rank-row"><span class="rk">' + (b.rank || '') + '</span><span class="nm">' + b.label + '</span><span class="sc" style="color:#059669;">' + b.score.toFixed(0) + '</span></div>';
+      });
+    }
+    if (item.bottom_branches && item.bottom_branches.length) {
+      item.bottom_branches.forEach(function(b) {
+        botH += '<div class="branch-rank-row"><span class="rk">' + (b.rank || '') + '</span><span class="nm">' + b.label + '</span><span class="sc" style="color:#ef4444;">' + b.score.toFixed(0) + '</span></div>';
+      });
+    }
+
+    $('detail-section').style.display = 'block';
+    $('detail-label').textContent = '[' + item.cat + '] ' + (item.label || '');
+    $('detail-content').innerHTML = '<div class="detail-box"><div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;"><div>' + topH + '</div><div>' + botH + '</div></div></div>';
+    window.scrollTo({top: $('detail-section').offsetTop - 80, behavior: 'smooth'});
+  };
+
+  // ════════ LOAD ALL SESSIONS ════════
+  var loadAllSessions = function() {
+    if (allSessions.length) { renderAllSessions(); return; }
+    $('as-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#9ca3af;">🔄 Memuat...</td></tr>';
+    fetch('/survey/api/kantor-checklist/list-sessions?limit=500')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data.ok) {
+          $('as-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#ef4444;">❌ ' + (data.error || 'Gagal') + '</td></tr>';
+          return;
+        }
+        allSessions = data.sessions || [];
+        renderAllSessions();
+      })
+      .catch(function(e) {
+        $('as-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#ef4444;">❌ ' + e.message + '</td></tr>';
+      });
+  };
+
+  var renderAllSessions = function() {
+    var search = ($('as-search').value || '').toLowerCase();
+    var status = $('as-status').value;
+    var filtered = allSessions.filter(function(s) {
+      if (status && s.workflow !== status) return false;
+      if (search && !s.kantor_label.toLowerCase().includes(search) && !s.kantor_code.includes(search)) return false;
+      return true;
+    });
+
+    $('as-total').textContent = filtered.length + '/' + allSessions.length;
+
+    var h = '';
+    filtered.forEach(function(s) {
+      var sc = s.score || 0;
+      var wf = s.workflow || 'draft';
+      var durasi = s.durasi || '—';
+      var h_tgl = s.tgl || '—';
+      var pic = s.pic || '—';
+      h += '<tr>';
+      h += '<td><strong style="font-size:12px;">' + (s.kantor_label || s.kantor_code) + '</strong><br><span style="font-size:10px;color:#9ca3af;">' + (s.kantor_code || '') + '</span></td>';
+      h += '<td><span class="score-ring" style="width:30px;height:30px;font-size:10px;background:' + scoreBg(sc) + ';">' + sc + '</span></td>';
+      h += '<td><span class="status-tag ' + (wf === 'submitted' ? 'st-submit' : 'st-draft') + '">' + (wf === 'submitted' ? '✅ Submit' : '🔄 Draft') + '</span></td>';
+      h += '<td style="font-size:11px;color:#6b7280;">' + durasi + '</td>';
+      h += '<td style="font-size:11px;color:#6b7280;">' + pic + '</td>';
+      h += '<td style="font-size:11px;color:#6b7280;">' + h_tgl + '</td>';
+      // PDF button
+      h += '<td style="text-align:center;">';
+      if (wf === 'submitted' || wf === 'approved') {
+        h += '<a href="/survey/api/kantor-checklist/export-pdf?kantor_code=' + (s.kantor_code || '') + '" target="_blank" style="padding:2px 6px;font-size:10px;border:1px solid #818cf8;border-radius:4px;background:#eef2ff;color:#4f46e5;text-decoration:none;">📄</a>';
+      } else {
+        h += '<span style="color:#d1d5db;">—</span>';
+      }
+      h += '</td>';
+      {% if user_id == '17012956' %}h += '<td style="text-align:center;"><button class="del-session-btn" data-kode="' + (s.kantor_code || '') + '" type="button" style="padding:3px 8px;font-size:10px;border:1px solid #fca5a5;border-radius:4px;background:#fef2f2;color:#dc2626;cursor:pointer;">🗑 Hapus</button></td>';{% endif %}
+      h += '</tr>';
+    });
+    $('as-tbody').innerHTML = h || '<tr><td colspan="7" style="text-align:center;padding:20px;color:#9ca3af;">Tidak ada data</td></tr>';
+  };
+
+  // Event delegation untuk hapus session
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.del-session-btn');
+    if (!btn) return;
+    e.preventDefault();
+    deleteSessionHandler(btn);
+  });
+
+  var deleteSessionHandler = function(btn) {
+    var kode = btn.getAttribute('data-kode');
+    if (!kode || !confirm('Hapus data checklist kantor ' + kode + '? Semua data akan hilang permanen!')) return false;
+    btn.disabled = true;
+    btn.textContent = '⏳';
+    fetch('/survey/api/kantor-checklist/hapus-session', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'kantor_code=' + encodeURIComponent(kode)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        btn.textContent = '✅';
+        allSessions = []; // force reload
+        loadAllSessions();
+      } else {
+        alert('Gagal: ' + (data.error || 'unknown'));
+        btn.disabled = false;
+        btn.textContent = '🗑 Hapus';
+      }
+    })
+    .catch(function(e) {
+      alert('Error: ' + e.message);
+      btn.disabled = false;
+      btn.textContent = '🗑 Hapus';
+    });
+    return false;
+  };
+
+  var filterAllSessions = function() {
+    renderAllSessions();
+  };
+
+  // ════════ BRANCH SEARCH ════════
+  var branchData = null;
+  var filterBranchTable = function() {
+    var q = ($('branch-search').value || '').toLowerCase().trim();
+    var table = document.getElementById('branch-table');
+    if (!table) return;
+    var rows = table.querySelectorAll('tbody tr');
+    rows.forEach(function(r) {
+      var txt = r.textContent.toLowerCase();
+      r.style.display = (!q || txt.indexOf(q) !== -1) ? '' : 'none';
+    });
+  };
+
+  // ════════ ITEM SEARCH + CUSTOM SORT ════════
+  var renderItemTable = function() {
+    var items = $('filter-item');
+    var itemVal = items ? items.value : '';
+    var catVal = ($('filter-cat') || {}).value || '';
+    var statusVal = ($('filter-status') || {}).value || '';
+    var searchVal = ($('item-search') || {}).value || '';
+    var filtered = allItems.filter(function(it) {
+      if (catVal && it.cat !== catVal) return false;
+      if (itemVal && it.idx !== parseInt(itemVal)) return false;
+      if (statusVal === 'submitted' && it.total_submit === 0) return false;
+      if (statusVal === 'draft' && it.total_draft === 0 && it.total_submit > 0) return false;
+      if (statusVal === 'belum' && it.total_submit === 0) return false;
+      if (searchVal && it.label.toLowerCase().indexOf(searchVal.toLowerCase()) === -1) return false;
+      return true;
+    });
+    renderItemRows(filtered);
+  };
+
+  // ════════ INIT ════════
+  switchTab('items');
+
+  // Init table sorting
+  setTimeout(function() {
+    initTableSort('item-table', function(row, key) {
+      var cells = row.querySelectorAll('td');
+      if (key === 'idx') return cells[0] ? parseInt(cells[0].textContent) : 0;
+      if (key === 'kat') return cells[1] ? cells[1].textContent.trim() : '';
+      if (key === 'item') return cells[2] ? cells[2].textContent.trim() : '';
+      if (key === 'bobot') return cells[3] ? parseFloat(cells[3].textContent) : 0;
+      if (key === 'rata') return cells[4] ? parseFloat(cells[4].textContent) : 0;
+      if (key === 'layak') return cells[5] ? parseFloat(cells[5].textContent) : 0;
+      if (key === 'tdkada') return cells[6] ? parseFloat(cells[6].textContent) : 0;
+      return '';
+    });
+    initTableSort('branch-table', function(row, key) {
+      var cells = row.querySelectorAll('td');
+      if (key === 'kantor') return cells[0] ? cells[0].textContent.trim() : '';
+      if (key === 'skor') {
+        var val = cells[1] ? cells[1].textContent.trim() : '';
+        return val === '—' ? -1 : parseFloat(val) || 0;
+      }
+      if (key === 'status') {
+        var s = cells[2] ? cells[2].textContent.trim() : '';
+        var order = {'✅ Submit': 3, '🔄 Draft': 2, '⬜ Belum': 1};
+        return order[s] || 0;
+      }
+      if (key === 'durasi') {
+        var d = cells[3] ? cells[3].textContent.trim() : '0';
+        return parseInt(d) || 0;
+      }
+      if (key === 'tgl') {
+        var t = cells[4] ? cells[4].textContent.trim() : '';
+        return t === '—' ? '' : t;
+      }
+      return '';
+    });
+    // All sessions table — need to wait for it to render via JS
+    var checkTable = setInterval(function() {
+      var asTable = document.getElementById('as-tbody');
+      if (asTable && asTable.querySelector('tr') && asTable.querySelector('tr').querySelectorAll('td').length > 1) {
+        clearInterval(checkTable);
+        var parentTable = asTable.closest('table');
+        if (parentTable) parentTable.id = 'as-table';
+        initTableSort('as-table', function(row, key) {
+          var cells = row.querySelectorAll('td');
+          if (key === 'kantor') return cells[0] ? cells[0].textContent.trim() : '';
+          if (key === 'skor') {
+            var val = cells[1] ? cells[1].textContent.trim() : '';
+            return val === '—' ? -1 : parseFloat(val) || 0;
+          }
+          if (key === 'status') {
+            var s = cells[2] ? cells[2].textContent.trim() : '';
+            var order = {'✅ Submit': 3, '🔄 Draft': 2, '⬜ Belum': 1};
+            return order[s] || 0;
+          }
+          if (key === 'durasi') return cells[3] ? parseInt(cells[3].textContent) || 0 : 0;
+          if (key === 'pic') return cells[4] ? cells[4].textContent.trim() : '';
+          if (key === 'tgl') return cells[5] ? cells[5].textContent.trim() : '';
+          return '';
+        });
+      }
+    }, 500);
+  }, 100);
+
+})();
+</script>
+
+
+
+
+</style>
+</head>
+<body>
+<div class="top-bar">
+  <div style="display:flex;align-items:center;gap:1rem">
+    <strong>📋 Ceklist Kantor</strong>
+    {% for m in menu_items %}
+    <a href="{{ m.url }}" class="nav-link">{{ m.icon }} {{ m.label }}</a>
+    {% endfor %}
+  </div>
+  <div style="display:flex;align-items:center;gap:.8rem">
+    <span style="font-size:.8rem;color:#93c5fd">👤 {{ user_name }}</span>
+    <a href="/api/logout" class="nav-link" style="color:#fca5a5">Keluar</a>
+  </div>
+</div>+
+
+
+  <div style="display:flex;align-items:center;gap:.8rem">
+    <span style="font-size:.8rem;color:#93c5fd">👤 {'{ user_name }'}</span>
+    <a href="/api/logout" class="nav-link" style="color:#fca5a5">Keluar</a>
+  </div>
+</div>
+
+
+<style>
+.tab-container { max-width:960px; margin:0 auto; padding:12px 16px 40px; position:relative; }
+.tab-header { display:flex; gap:6px; border-bottom:2px solid #e5e7eb; margin-bottom:20px; }
+.tab-pane { position:relative; }
+.sortable { cursor:pointer; user-select:none; }
+.sortable:hover { background:#f3f4f6; }
+.sort-arrow { font-size:9px; color:#9ca3af; display:inline-block; width:10px; }
+.sort-asc .sort-arrow, .sort-desc .sort-arrow { color:#6366f1; }
+.sort-asc .sort-arrow::after { content:'▲'; }
+.sort-desc .sort-arrow::after { content:'▼'; }
+.tab-btn { padding:10px 20px; font-size:14px; font-weight:600; border:none; background:white; color:#6b7280; cursor:pointer; transition:all .2s; }
+.tab-btn:hover { color:#4f46e5; }
+.tab-btn.active { color:#4f46e5; border-bottom:3px solid #6366f1; margin-bottom:-2px; }
+.tab-content { display:none; padding:16px 0; min-height:200px; }
+.dash-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin-bottom:20px; }
+.dash-card { background:#fff; border-radius:12px; padding:16px; box-shadow:0 1px 4px rgba(0,0,0,.07); }
+.dash-card h3 { margin:0 0 4px; font-size:13px; color:#6b7280; font-weight:500; }
+.dash-card .num { font-size:28px; font-weight:700; }
+.dash-card .sub { font-size:11px; color:#9ca3af; margin-top:2px; }
+.score-ring { display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; border-radius:50%; font-size:11px; font-weight:700; color:#fff; flex-shrink:0; }
+.rank-badge { display:inline-flex; width:20px; height:20px; align-items:center; justify-content:center; border-radius:50%; font-size:10px; font-weight:700; color:#fff; }
+.rank-1 { background:#f59e0b; }
+.rank-2 { background:#9ca3af; }
+.rank-3 { background:#d97706; }
+.filter-bar { background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:12px; margin-bottom:16px; }
+.scroll-table { max-height:400px; overflow-y:auto; border:1px solid #e5e7eb; border-radius:8px; }
+.item-table { width:100%; border-collapse:collapse; font-size:12px; }
+.item-table th { background:#f9fafb; position:sticky; top:0; z-index:1; padding:8px 10px; text-align:left; font-weight:600; color:#6b7280; border-bottom:2px solid #e5e7eb; }
+.item-table td { padding:7px 10px; border-bottom:1px solid #f3f4f6; }
+.item-table tr:hover td { background:#f9fafb; }
+.bar-wrap { height:6px; background:#f3f4f6; border-radius:3px; overflow:hidden; }
+.bar-fill { height:100%; border-radius:3px; transition:width .3s; }
+.branch-table { width:100%; border-collapse:collapse; font-size:12px; }
+.branch-table th { background:#f9fafb; position:sticky; top:0; z-index:1; padding:8px 10px; text-align:left; font-weight:600; color:#6b7280; border-bottom:2px solid #e5e7eb; }
+.branch-table td { padding:7px 10px; border-bottom:1px solid #f3f4f6; }
+.branch-table tr:hover td { background:#f9fafb; }
+.status-tag { display:inline-block; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:600; }
+.st-submit { background:#d1fae5; color:#065f46; }
+.st-draft { background:#fef9c3; color:#854d0e; }
+.st-belum { background:#f3f4f6; color:#6b7280; }
+.detail-box { background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:12px; margin-bottom:12px; }
+.branch-rank-row { display:flex; align-items:center; gap:8px; padding:4px 0; font-size:12px; border-bottom:1px solid #f9fafb; }
+</style>
+
+
+
+<div class="tab-container">
+
+
+  <!-- ═══ OVERVIEW — TETAP DI SEMUA TAB ═══ -->
+  <div class="dash-grid">
+    <div class="dash-card">
+<script>
+// Fix: renderItemRows — rebuild dari data dashboard-items JSON
+var _dashboardItems = null;
+function ensureItems(cb) {
+  if (_dashboardItems) { cb(_dashboardItems); return; }
+  fetch('/survey/api/kantor-checklist/dashboard-data')
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      _dashboardItems = d.items || [];
+      cb(_dashboardItems);
+    })
+    .catch(function(){
+      _dashboardItems = [];
+      cb([]);
+    });
+}
+
+function renderItemRows(filtered) {
+  ensureItems(function(items){
+    var tbody = document.querySelector('#item-table tbody');
+    if (!tbody) return;
+    var html = '';
+    var list = [];
+    for (var i=0;i<items.length;i++) {
+      list.push(items[i]);
+    }
+    if (filtered && filtered.forEach) list = filtered;
+    for (var i=0;i<list.length;i++){
+      var it = list[i];
+      var cat_names = {"A":"Lokasi","B":"Identitas","C":"Ruang Konsumen","D":"Fas. Karyawan","E":"Alat Kerja","F":"Keamanan","G":"Dokumen"};
+      var cat = cat_names[it.cat] || it.cat;
+      var s = it.avg_score || 0;
+      var color = s >= 85 ? 'green' : (s >= 65 ? 'orange' : (s >= 45 ? 'red' : 'darkred'));
+      html += '<tr><td>'+(i+1)+'</td><td>'+cat+'</td><td>'+it.label+'</td><td>'+it.weight+'</td><td style="color:'+color+';font-weight:700">'+s+'%</td><td>'+it.layak+'</td><td>'+(it.tidak_ada||0)+'</td><td>'+(it.rusak||0)+'</td><td>'+it.total_dinilai+'</td></tr>';
+    }
+    tbody.innerHTML = html || '<tr><td colspan="9" style="text-align:center;color:#9ca3af;padding:30px;">Belum ada data penilaian</td></tr>';
+  });
+}
+</script>
+
+
+</body>
+</html>

@@ -39,6 +39,11 @@ body { background:#f1f5f9; font-family:system-ui,-apple-system,sans-serif; paddi
 .photo-wrapper { display:flex; align-items:center; gap:.4rem; margin:.3rem 0; flex-wrap:wrap; }
 .photo-wrapper input[type="file"] { font-size:.7rem; }
 .photo-wrapper .photo-preview { width:50px; height:50px; object-fit:cover; border-radius:6px; border:1px solid #e5e7eb; }
+.lightbox-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.8); z-index:9999; justify-content:center; align-items:center; cursor:pointer; }
+.lightbox-overlay.open { display:flex; }
+.lightbox-overlay img { max-width:95vw; max-height:95vh; object-fit:contain; border-radius:8px; box-shadow:0 4px 20px rgba(0,0,0,.5); }
+.lightbox-close { position:fixed; top:15px; right:20px; color:white; font-size:28px; cursor:pointer; background:rgba(0,0,0,.3); width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; z-index:10000; }
+img.auto-scale { max-width:90vw; max-height:80vh; object-fit:contain; background:#e2e8f0; border-radius:8px; }
 .note-input { width:100%; border:1px solid #e5e7eb; border-radius:6px; padding:.4rem .5rem; font-size:.75rem; resize:vertical; min-height:32px; margin-top:.25rem; }
 .submit-bar { position:fixed; bottom:0; left:0; right:0; background:white; border-top:1px solid #e2e8f0; padding:.6rem 1rem; display:flex; justify-content:space-between; align-items:center; box-shadow:0 -2px 8px rgba(0,0,0,.06); z-index:200; }
 .submit-bar .summary-text { font-size:.75rem; color:#6b7280; }
@@ -144,9 +149,7 @@ body { background:#f1f5f9; font-family:system-ui,-apple-system,sans-serif; paddi
   <div style="display:flex;align-items:center;gap:4px;width:100%">
     <video id="video-{{ idx }}" style="width:70px;height:50px;object-fit:cover;border-radius:6px;border:1px solid #d1d5db;display:none" muted playsinline></video>
     <div class="photo-thumb-wrap" id="thumb-wrap-{{ idx }}" style="position:relative;{{ 'display:block;' if initial_status_data and idx < initial_status_data|length and initial_status_data[idx].get('foto') else 'display:none;' }}">
-      <a href="{{ (initial_status_data[idx].get('foto','')) if initial_status_data and idx < initial_status_data|length and initial_status_data[idx].get('foto') else '#' }}" target="_blank" title="Klik untuk lihat besar">
-      <img class="photo-preview" id="preview-{{ idx }}" src="{{ (initial_status_data[idx].get('foto','')+'?t='+today_str) if initial_status_data and idx < initial_status_data|length and initial_status_data[idx].get('foto') else '' }}" style="display:{{ 'block' if initial_status_data and idx < initial_status_data|length and initial_status_data[idx].get('foto') else 'none' }};width:50px;height:50px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb;cursor:pointer;">
-      </a>
+      <img class="photo-preview" id="preview-{{ idx }}" src="{{ (initial_status_data[idx].get('foto','')+'?t='+today_str) if initial_status_data and idx < initial_status_data|length and initial_status_data[idx].get('foto') else '' }}" style="display:{{ 'block' if initial_status_data and idx < initial_status_data|length and initial_status_data[idx].get('foto') else 'none' }};width:50px;height:50px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb;cursor:pointer;" onclick="openLightbox('{{ initial_status_data[idx].get('foto','') if initial_status_data else '' }}')" title="Klik untuk lihat besar">
       <button type="button" class="photo-del-btn" data-idx="{{ idx }}" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:none;background:#ef4444;color:white;font-size:11px;line-height:18px;text-align:center;cursor:pointer;padding:0;">✕</button>
       <div class="upload-progress" id="upload-progress-{{ idx }}" style="position:absolute;bottom:0;left:0;right:0;height:4px;background:#e5e7eb;border-radius:0 0 6px 6px;overflow:hidden;display:none;">
         <div class="progress-bar" style="height:100%;width:0%;background:#22c55e;transition:width .3s;"></div>
@@ -992,5 +995,27 @@ if (document.querySelector('.video-del-btn')) {
 })();
 </script>
 
+<!-- Lightbox overlay -->
+<div class="lightbox-overlay" id="lightbox-overlay" onclick="closeLightbox()">
+  <div class="lightbox-close" onclick="closeLightbox()">✕</div>
+  <img id="lightbox-img" src="" alt="Foto">
+</div>
+
+<script>
+function openLightbox(src) {
+  if(!src) return;
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox-overlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeLightbox() {
+  document.getElementById('lightbox-overlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+// Escape key to close
+document.addEventListener('keydown', function(e) {
+  if(e.key === 'Escape') closeLightbox();
+});
+</script>
 </body>
 </html>
