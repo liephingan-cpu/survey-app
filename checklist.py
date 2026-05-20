@@ -1307,7 +1307,7 @@ async def survey_dashboard(request: Request, session: Optional[str] = Cookie(Non
         from collections import defaultdict
         area_groups = defaultdict(lambda: {"area_code": "?", "area_name": "?", "branches": [], "scores": [], "submitted": 0, "draft": 0, "total": 0})
         wilayah_groups = defaultdict(lambda: {"area_code": "?", "area_name": "?", "wilayah_code": "?", "wilayah_name": "?", "branches": [], "scores": [], "submitted": 0, "draft": 0, "total": 0})
-        for m in mws:
+        for m in merged:
             ac = m.get("area_code", "?")
             an = m.get("area_name", "?")
             wc = m.get("wilayah_code", "?")
@@ -3413,6 +3413,11 @@ tr:hover{background:#f1f5f9}
     except Exception as e:
         import traceback; traceback.print_exc()
         return HTMLResponse(f"<h2>PDF Error: {e}</h2><pre>{traceback.format_exc()}</pre>", status_code=500)
+
+@router.get("/survey/api/public/pdf/{kantor_code}")
+async def pdf_public_route(kantor_code: str):
+    return await pdf_public(kantor_code)
+
 
 @router.get("/survey/api/kantor-checklist/area-summary")
 async def area_summary_api(request: Request, session: Optional[str] = Cookie(None)):
