@@ -754,19 +754,47 @@ async def api_submit(request: Request, session: Optional[str] = Cookie(None)):
 
 def _hitung_weighted_score(status_data, db_items):
     """Hitung weighted score 0-100 dari status_data dan bobot item+option.
+    Item weight dihitung DINAMIS: cat_weight / jumlah_item_aktif_di_kategori.
     Item yang tidak terisi dianggap score 0 (weight_mult = 0).
     Returns (weighted_score, weighted_baik, weighted_total, detail_per_item).
     detail_per_item: list of dict dengan actual_score & max_score per item."""
+    from collections import defaultdict
+
+    # ── Hitung weight dinamis per kategori ──
+    # Group items by category
+    cat_items = defaultdict(list)
+    for i, di in enumerate(db_items):
+        cat_items[di['cat']].append(i)
+
+    # Ambil cat_weight dari DB
+    try:
+        conn_local = get_db()
+        cur_local = conn_local.cursor()
+        cur_local.execute("SELECT cat_code, cat_weight FROM origo.survey_categories")
+        cat_weights = {r[0]: float(r[1]) for r in cur_local.fetchall()}
+        cur_local.close()
+        conn_local.close()
+    except:
+        cat_weights = {}
+
+    # Hitung item weight per kategori
+    item_weight_map = {}
+    for cat, idxs in cat_items.items():
+        cat_w = cat_weights.get(cat, 0)
+        n = len(idxs)
+        per_item = cat_w / n if n > 0 else 0
+        for idx in idxs:
+            item_weight_map[idx] = per_item
+
     total_actual = 0.0
     total_max = 0.0
     details = []
     for i, di in enumerate(db_items):
-        item_weight = di.get("weight", 1.0)
+        item_weight = item_weight_map.get(i, 0)
         max_possible = item_weight * 1.0
 
         # Cari status dari status_data (kalo ada)
         sv = -1
-        foto_geo = None
         if i < len(status_data):
             s = status_data[i] if isinstance(status_data[i], dict) else {}
             st = s.get("status", "")
@@ -799,15 +827,15 @@ def _hitung_weighted_score(status_data, db_items):
     return (weighted_score, weighted_baik, weighted_total, details)
 
 def _get_cat_names():
-    """Ambil kategori dari DB"""
+    """Ambil kategori dari DB — return {code: {label, weight}}"""
     try:
         conn = get_db(); cur = conn.cursor()
-        cur.execute("SELECT code, label FROM origo.survey_categories WHERE is_active = true ORDER BY sort_order")
-        d = dict(cur.fetchall())
+        cur.execute("SELECT cat_code, cat_name, cat_weight FROM origo.survey_categories WHERE is_active = true ORDER BY sort_order")
+        d = {r[0]: {"name": r[1], "weight": float(r[2])*100} for r in cur.fetchall()}
         cur.close(); conn.close()
         return d
     except:
-        return {"A":"Lokasi & Akses","B":"Identitas & Visibilitas","C":"Ruang Konsumen","D":"Fasilitas Karyawan","E":"Alat Kerja","F":"Keamanan & Barang Sitaan","G":"Dokumen & Regulasi"}
+        return {"A": {"name":"Lokasi & Akses","weight":15},"B": {"name":"Identitas & Visibilitas","weight":10},"C": {"name":"Ruang Konsumen","weight":15},"D": {"name":"Fasilitas Karyawan","weight":10},"E": {"name":"Alat Kerja","weight":15},"F": {"name":"Keamanan & Barang Sitaan","weight":25},"G": {"name":"Dokumen & Regulasi","weight":10}}
 
 
 def _get_type_options_map():
@@ -3263,7 +3291,9 @@ async def pdf_public(kantor_code: str):
 
         total_items = sum(c["total"] for c in cat_data.values())
         total_baik = sum(c["baik"] for c in cat_data.values())
-        skor = round(total_baik / total_items * 100, 1) if total_items > 0 else 0
+        # Gunakan weighted scoring sesuai form survey
+        ws_pdf, _, _, _ = _hitung_weighted_score(items, db_items)
+        skor = round(ws_pdf, 1) if ws_pdf else round(total_baik / total_items * 100, 1) if total_items > 0 else 0
 
         pages = []
         pages.append("""<!doctype html><html><head><meta charset="utf-8">
@@ -3947,3 +3977,145 @@ async def serve_pdf_redirect(kantor_code: str):
     """Redirect ke public PDF endpoint - ganti link di dashboard"""
     return HTMLResponse(f"<script>window.location.href='/survey/api/public/pdf/{kantor_code}?dl=1';</script>")
 
+
+@router.get("/survey/api/kantor-checklist/item-evidence")
+async def item_evidence_api(request: Request):
+    """
+    Return daftar kantor yang memilih opsi tertentu untuk item tertentu.
+    Query params: item_idx (int), opt_status (int, default 0)
+    
+    Digunakan untuk: waktu klik opsi "Tidak" di distribusi jawaban,
+    muncul daftar kantor lengkap dengan foto, video, catatan, AI analysis.
+    """
+    if not get_user_from_cookie(request.cookies.get("session","")):
+        return JSONResponse({"ok": False, "error": "Sesi login diperlukan"}, status_code=401)
+    
+    item_idx = request.query_params.get("item_idx")
+    opt_status = request.query_params.get("opt_status", "4")
+    
+    if not item_idx:
+        return JSONResponse({"ok": False, "error": "Parameter item_idx diperlukan"}, status_code=400)
+    
+    try:
+        item_idx = int(item_idx)
+        opt_status = int(opt_status)
+    except ValueError:
+        return JSONResponse({"ok": False, "error": "item_idx dan opt_status harus integer"}, status_code=400)
+    
+    import psycopg2
+    conn = psycopg2.connect(
+        dbname=os.getenv("PG_DB", "db_gabungan"),
+        user=os.getenv("PG_USER", "postgres"),
+        password=os.getenv("PG_PASS", "postgres"),
+        host=os.getenv("PG_HOST", "localhost"),
+        port=int(os.getenv("PG_PORT", "5432"))
+    )
+    cur = conn.cursor()
+    
+    try:
+        # Query kantor yang status_data[item_idx].status = opt_status
+        query = """
+            SELECT kd.kantor_code, ik.nama as kantor_nama,
+                   kd.status_data, kd.tgl_cek, kd.pic, kd.nomor_survei, kd.submitted_at
+            FROM origo.kantor_checklist_data kd
+            LEFT JOIN i_kantor ik ON kd.kantor_code::int = ik.id
+            WHERE kd.status_data IS NOT NULL
+              AND kd.workflow_status IN ('submitted', 'reviewed', 'approved')
+              AND kd.status_data::jsonb->>%s = %s
+              AND kd.status_data::jsonb->%s IS NOT NULL
+            ORDER BY kd.tgl_cek DESC
+        """
+        # Pendekatan: cari jsonb array element dengan item_idx tertentu
+        # status_data is array, kita cari item yang statusnya = opt_status
+        # Lebih aman: filter via Python
+        cur.execute("""
+            SELECT kd.id, kd.kantor_code, ntn.display_name as kantor_nama,
+                   kd.status_data, kd.tgl_cek, kd.pic, kd.nomor_survei,
+                   kd.submitted_at
+            FROM origo.kantor_checklist_data kd
+            LEFT JOIN (
+                SELECT DISTINCT ON (node_code) node_code, display_name
+                FROM origo.network_tree_node
+                ORDER BY node_code, id
+            ) ntn ON kd.kantor_code = ntn.node_code
+            WHERE kd.status_data IS NOT NULL
+              AND kd.workflow_status IN ('submitted', 'reviewed', 'approved')
+            ORDER BY kd.tgl_cek DESC
+        """)
+        
+        import json
+        results = []
+        for r in cur.fetchall():
+            row_id, kantor_code, kantor_nama, sd_raw, tgl_cek, pic, nomor_survei, submitted_at = r
+            
+            if isinstance(sd_raw, str):
+                sd = json.loads(sd_raw)
+            else:
+                sd = sd_raw
+            
+            if not isinstance(sd, (list, tuple)):
+                continue
+            
+            if item_idx >= len(sd):
+                continue
+            
+            item_data = sd[item_idx]
+            if not isinstance(item_data, dict):
+                continue
+            
+            item_status = item_data.get("status")
+            # status bisa int atau string
+            try:
+                item_status = int(item_status) if item_status not in (None, "") else None
+            except (ValueError, TypeError):
+                item_status = None
+            
+            if item_status != opt_status:
+                continue
+            
+            # Get AI analysis
+            cur2 = conn.cursor()
+            cur2.execute(
+                """SELECT saran, relevan, model, created_at FROM origo.survey_ai_usage
+                   WHERE kantor_code = %s AND item_idx = %s
+                   ORDER BY created_at DESC LIMIT 1""",
+                (kantor_code, item_idx)
+            )
+            ai_row = cur2.fetchone()
+            cur2.close()
+            
+            ai_info = {}
+            if ai_row:
+                ai_info = {
+                    "saran": ai_row[0] or "",
+                    "relevan": ai_row[1] if ai_row[1] is not None else True,
+                    "model": ai_row[2] or ""
+                }
+            
+            results.append({
+                "kantor_code": str(kantor_code),
+                "kantor_nama": kantor_nama or "",
+                "foto": item_data.get("foto", ""),
+                "video_path": item_data.get("video_path", ""),
+                "note": item_data.get("note", ""),
+                "pic": str(pic or ""),
+                "tgl_cek": str(tgl_cek or ""),
+                "nomor_survei": nomor_survei or "",
+                "ai": ai_info
+            })
+        
+        return JSONResponse({
+            "ok": True,
+            "item_idx": item_idx,
+            "opt_status": opt_status,
+            "total": len(results),
+            "evidence": results
+        })
+    
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+    finally:
+        cur.close()
+        conn.close()

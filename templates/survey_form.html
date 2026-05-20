@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<title>📋 Survey — {{ kantor_label }}</title>
+<link rel="icon" href="data:,"><title>📋 Survey — {{ kantor_label }}</title>
 <style>
 * { box-sizing:border-box; margin:0; padding:0; }
 body { background:#f1f5f9; font-family:system-ui,-apple-system,sans-serif; padding-bottom:80px; }
@@ -116,7 +116,6 @@ img.auto-scale { max-width:90vw; max-height:80vh; object-fit:contain; background
 <!-- Form items — server-side rendered -->
 <form id="checklist-form">
 {% set cat_order = ['A','B','C','D','E','F','G'] %}
-{% set cat_names = {'A':'Lokasi & Akses','B':'Identitas & Visibilitas','C':'Ruang Konsumen','D':'Fasilitas Karyawan','E':'Alat Kerja','F':'Keamanan & Barang Sitaan','G':'Dokumen & Regulasi'} %}
 {% set cat_colors = {'A':'#3b82f6','B':'#ec4899','C':'#10b981','D':'#f59e0b','E':'#8b5cf6','F':'#ef4444','G':'#14b8a6'} %}
 
 {% for cat in cat_order %}
@@ -125,7 +124,7 @@ img.auto-scale { max-width:90vw; max-height:80vh; object-fit:contain; background
 {% set cat_color = cat_colors.get(cat,'#6b7280') %}
 <div style="margin:6px 0;background:white;border-radius:8px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.06)">
 <div class="section-header" style="color:{{ cat_color }};border-bottom-color:{{ cat_color }}">
-  <span>{{ cat }}. {{ cat_names.get(cat,cat) }}</span>
+  <span>{{ cat }}. {{ cat_names.get(cat,{}).get('name',cat) }} ({{ cat_names.get(cat,{}).get('weight','?') }}%)</span>
   <span class="cat-progress" id="cat-progress-{{ cat }}" style="font-size:.7rem;color:#6b7280;font-weight:400;margin-left:auto;margin-right:6px;">0/{{ c_items|length }}</span>
   <span class="toggle"></span>
 </div>
@@ -135,7 +134,7 @@ img.auto-scale { max-width:90vw; max-height:80vh; object-fit:contain; background
 <div class="item" data-idx="{{ idx }}" data-item-label="{{ cat }}.{{ item_num }}">
 <div class="item-label">{{ item_num }}. {{ it.label }}</div>
     <div class="item-tip" style="background:#f3f4f6;padding:6px 8px;border-radius:6px;margin-top:4px;line-height:1.4;color:#4b5563;">{{ it.tip }}</div>
-<div class="item-weight">Bobot: {{ it.weight }}</div>
+<div class="item-weight">Bobot: {{ (cat_names.get(cat,{}).get('weight',15)|float / 100 / c_items|length * 100)|round(1) }}%</div>
 <div class="item-options" id="opts-{{ idx }}">
   {% for opt in it.options %}
   {% set score = opt.score %}
