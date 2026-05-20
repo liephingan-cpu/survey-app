@@ -3585,6 +3585,158 @@ async def branch_tree_api(request: Request, session: Optional[str] = Cookie(None
         return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
 
 
+@router.get("/survey/api/kantor-checklist/item-stats")
+async def item_stats_api(request: Request, session: Optional[str] = Cookie(None),
+                         area_code: str = Query(""), wilayah_code: str = Query("")):
+    """Per-item stats dengan filter area/wilayah — best/worst items per area."""
+    user = get_user_from_cookie(session)
+    if not user:
+        return JSONResponse({"ok": False, "error": "Not logged in"}, status_code=401)
+    try:
+        conn = get_db(); cur = conn.cursor()
+
+        # Ambil semua branch + mapping area/wilayah
+        cur.execute("""
+            WITH RECURSIVE tree AS (
+                SELECT id, parent_id, node_code, display_name, branch_kind, office_code,
+                       1 AS depth, CAST(node_code AS text) AS path_code, CAST(display_name AS text) AS path_name
+                FROM origo.network_tree_node
+                WHERE version_id = (SELECT id FROM origo.network_tree_version WHERE is_published = TRUE LIMIT 1)
+                  AND parent_id IS NULL
+                UNION ALL
+                SELECT n.id, n.parent_id, n.node_code, n.display_name, n.branch_kind, n.office_code,
+                       t.depth + 1,
+                       t.path_code || '>' || n.node_code,
+                       t.path_name || ' > ' || n.display_name
+                FROM origo.network_tree_node n
+                JOIN tree t ON n.parent_id = t.id
+                WHERE n.version_id = (SELECT id FROM origo.network_tree_version WHERE is_published = TRUE LIMIT 1)
+            )
+            SELECT office_code, path_code, path_name
+            FROM tree
+            WHERE branch_kind NOT IN ('area','wilayah') AND office_code IS NOT NULL
+        """)
+        branch_area = {}
+        for r in cur.fetchall():
+            oc = r[0]; pc = (r[1] or "").split(">"); pn = (r[2] or "").split(" > ")
+            branch_area[oc] = {
+                "area_code": pc[1] if len(pc) >= 2 else "?",
+                "area_name": pn[1] if len(pn) >= 2 else "?",
+                "wilayah_code": pc[2] if len(pc) >= 3 else pc[1] if len(pc) >= 2 else "?",
+                "wilayah_name": pn[2] if len(pn) >= 3 else pn[1] if len(pn) >= 2 else "?",
+            }
+
+        # Ambil semua data checklist
+        cur.execute("""
+            SELECT kantor_code, status_data, yes_count, no_count, total_items, workflow_status
+            FROM origo.kantor_checklist_data
+            WHERE status_data IS NOT NULL AND jsonb_array_length(status_data) > 0
+        """)
+
+        dbitems = _get_items_from_db()
+        if not dbitems:
+            return JSONResponse({"ok": False, "error": "No items"}, status_code=500)
+
+        # Ambil opsi
+        cur2 = conn.cursor()
+        cur2.execute("""
+            SELECT t.type_code, o.opt_value::int, o.weight_mult, o.opt_label, COALESCE(o.is_no, false)
+            FROM origo.survey_question_types t
+            JOIN origo.survey_type_options o ON t.id = o.type_id
+            ORDER BY t.type_code, o.sort_order
+        """)
+        opt_labels = {}
+        for tc, ov, wm, lbl, inh in cur2.fetchall():
+            opt_labels.setdefault(tc, {})[ov] = {"label": lbl, "is_no": inh, "weight_mult": float(wm)}
+        cur2.close()
+
+        # Kumpulin status per item per kantor — filter area/wilayah
+        ist = {i: {"total": 0, "score_sum": 0.0, "opts": {}} for i in range(len(dbitems))}
+        total_sessions = 0
+        for r in cur.fetchall():
+            kc = r[0]
+            if area_code:
+                ba = branch_area.get(kc, {})
+                if ba.get("area_code") != area_code:
+                    continue
+            if wilayah_code:
+                ba = branch_area.get(kc, {})
+                if ba.get("wilayah_code", "") != wilayah_code:
+                    code = ba.get("area_code", "") + ">" + (ba.get("wilayah_code", "") or "")
+                    if code != wilayah_code:
+                        continue
+
+            sd = r[1]
+            total_sessions += 1
+            for s in (sd or []):
+                try:
+                    sv = int(s.get("status") if isinstance(s, dict) else s)
+                except (ValueError, AttributeError):
+                    continue
+                for i in range(len(dbitems)):
+                    tc = dbitems[i]["type"]
+                    wm = opt_labels.get(tc, {}).get(sv, {}).get("weight_mult", 0.0)
+                    ist[i]["total"] += 1
+                    ist[i]["opts"][sv] = ist[i]["opts"].get(sv, 0) + 1
+                    ist[i]["score_sum"] += wm
+
+        # Hitung per item
+        cats_data = {}
+        cur.execute("SELECT cat_code, cat_name FROM origo.survey_categories")
+        for r in cur.fetchall():
+            cats_data[r[0]] = {"name": r[1]}
+
+        items = []
+        for i in range(len(dbitems)):
+            s = ist[i]
+            item_score = round(s["score_sum"] / s["total"] * 100, 1) if s["total"] > 0 else 0
+            item_opts = []
+            tc = dbitems[i]["type"]
+            for ov in sorted(s["opts"].keys()):
+                ol = opt_labels.get(tc, {}).get(ov, {})
+                item_opts.append({
+                    "val": ov, "count": s["opts"][ov],
+                    "label": ol.get("label", f"Nilai {ov}"),
+                    "is_no": ol.get("is_no", False),
+                })
+            items.append({
+                "idx": i, "cat": dbitems[i]["cat"],
+                "label": dbitems[i]["label"],
+                "weight": dbitems[i]["weight"],
+                "avg_score": item_score,
+                "opts": item_opts,
+                "total_dinilai": s["total"],
+            })
+
+        # Sort by score ascending (worst first = biggest problems)
+        items_sorted = sorted(items, key=lambda x: x["avg_score"])
+
+        merah = sum(1 for x in items if x["avg_score"] < 60)
+        kuning = sum(1 for x in items if 60 <= x["avg_score"] < 80)
+        hijau = sum(1 for x in items if x["avg_score"] >= 80)
+        rata_all = round(sum(x["avg_score"] for x in items) / len(items), 1) if items else 0
+
+        best_items = [x for x in items_sorted if x["avg_score"] >= 80][-5:] if items_sorted else []
+        best_items.reverse()
+        worst_items = [x for x in items_sorted if x["avg_score"] < 60][:5] if items_sorted else []
+        if len(worst_items) < 5:
+            worst_items = [x for x in items_sorted if x["avg_score"] < 80][:5]
+
+        return JSONResponse({
+            "ok": True,
+            "items": items,
+            "merah": merah, "kuning": kuning, "hijau": hijau,
+            "rata_all": rata_all,
+            "best_items": best_items,
+            "worst_items": worst_items,
+            "total_sessions": total_sessions,
+            "filter": {"area_code": area_code, "wilayah_code": wilayah_code},
+        })
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
 @router.post("/survey/api/log-share")
 async def log_share_api(request: Request, session: Optional[str] = Cookie(None)):
     """Catat log siapa yg share report (via Web Share API)."""

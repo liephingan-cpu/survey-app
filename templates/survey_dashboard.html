@@ -148,105 +148,308 @@ img.auto-orient { max-height:100px;object-fit:contain;background:#f1f5f9;border-
   {% if user_id == '17012956' %}<div class="tab-btn" data-tab="session">Semua Session</div>{% endif %}
 </div>
 
-<!-- Tab: Per Item — Redesigned: analisa, perbaikan, prioritas -->
+<!-- Tab: Per Item — Filterable by Area/Wilayah + Best/Worst -->
 <div class="tab-panel" id="tab-item">
-{% if problem_items %}
 <script id="item-kantors-json" type="application/json">{{ item_kantors_json|safe }}</script>
-{% set ns = namespace(merah=0, kuning=0, hijau=0) %}
-{% for it in problem_items %}
-  {% if it.avg_score < 60 %}{% set ns.merah = ns.merah + 1 %}
-  {% elif it.avg_score < 80 %}{% set ns.kuning = ns.kuning + 1 %}
-  {% else %}{% set ns.hijau = ns.hijau + 1 %}
-  {% endif %}
-{% endfor %}
-{% set total_item = problem_items|length %}
-{% set sum_score = namespace(val=0) %}
-{% for it in problem_items %}{% set sum_score.val = sum_score.val + it.avg_score %}{% endfor %}
-{% set rata_nasional = (sum_score.val / total_item)|round(1) if total_item > 0 else 0 %}
 
-<!-- Section 1: Scorecard with colored backgrounds -->
-<div class="summary-grid" style="margin-bottom:8px;">
-  {% set merah_cls = 'bg-red' %}
-  {% set kuning_cls = 'bg-yellow' %}
-  {% set hijau_cls = 'bg-green' %}
-  {% set rata_score = rata_nasional %}
-  {% set rata_cls = 'bg-green' if rata_score >= 80 else 'bg-yellow' if rata_score >= 60 else 'bg-red' %}
-  {% if ns.merah <= 0 and ns.kuning <= 0 and ns.hijau <= 0 %}{% set rata_cls = 'bg-gray' %}{% endif %}
-  <div class="dash-card {% if ns.merah > 0 %}bg-red{% else %}bg-gray{% endif %}" style="background:{% if ns.merah > 0 %}#fee2e2{% else %}#f1f5f9{% endif %}!important;">
-    <h3 style="color:{% if ns.merah > 0 %}#991b1b{% else %}#64748b{% endif %};">🔴 Zona Merah</h3>
-    <div class="num" style="font-size:1.6rem;font-weight:800;color:{% if ns.merah > 0 %}#991b1b{% else %}#64748b{% endif %};">{{ ns.merah }}</div>
-    <div class="note" style="color:{% if ns.merah > 0 %}#991b1b{% else %}#64748b{% endif %};">&lt; 60%</div>
+<style>
+.item-filter-select {
+  padding:4px 8px; border:1.5px solid #e2e8f0; border-radius:6px;
+  font-size:.72rem; background:white; color:#334155;
+}
+.best-worst-badge { font-size:.65rem; padding:2px 6px; border-radius:4px; }
+.best-badge { background:#dcfce7; color:#166534; }
+.worst-badge { background:#fee2e2; color:#991b1b; }
+</style>
+
+<!-- Filters -->
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+  <select id="item-filter-area" class="item-filter-select" onchange="loadItemStats()">
+    <option value="">🌐 Semua Area</option>
+  </select>
+  <select id="item-filter-wilayah" class="item-filter-select" onchange="loadItemStats()" disabled>
+    <option value="">📍 Semua Wilayah</option>
+  </select>
+  <span style="font-size:.68rem;color:#64748b;padding:5px 0;" id="item-stats-label">Memuat data nasional...</span>
+</div>
+
+<!-- Scorecard -->
+<div id="item-scorecard" class="summary-grid" style="margin-bottom:8px;">
+  <div class="dash-card" id="item-card-merah" style="background:#f1f5f9!important;">
+    <h3 style="color:#64748b;">🔴 Zona Merah</h3>
+    <div class="num" id="item-num-merah" style="font-size:1.6rem;font-weight:800;color:#64748b;">—</div>
+    <div class="note" style="color:#64748b;">&lt; 60%</div>
   </div>
-  <div class="dash-card" style="background:{% if ns.kuning > 0 %}#fef9c3{% else %}#f1f5f9{% endif %}!important;">
-    <h3 style="color:{% if ns.kuning > 0 %}#854d0e{% else %}#64748b{% endif %};">🟡 Zona Kuning</h3>
-    <div class="num" style="font-size:1.6rem;font-weight:800;color:{% if ns.kuning > 0 %}#854d0e{% else %}#64748b{% endif %};">{{ ns.kuning }}</div>
-    <div class="note" style="color:{% if ns.kuning > 0 %}#854d0e{% else %}#64748b{% endif %};">60-80%</div>
+  <div class="dash-card" id="item-card-kuning" style="background:#f1f5f9!important;">
+    <h3 style="color:#64748b;">🟡 Zona Kuning</h3>
+    <div class="num" id="item-num-kuning" style="font-size:1.6rem;font-weight:800;color:#64748b;">—</div>
+    <div class="note" style="color:#64748b;">60-80%</div>
   </div>
-  <div class="dash-card" style="background:{% if ns.hijau > 0 %}#dcfce7{% else %}#f1f5f9{% endif %}!important;">
-    <h3 style="color:{% if ns.hijau > 0 %}#166534{% else %}#64748b{% endif %};">🟢 Zona Hijau</h3>
-    <div class="num" style="font-size:1.6rem;font-weight:800;color:{% if ns.hijau > 0 %}#166534{% else %}#64748b{% endif %};">{{ ns.hijau }}</div>
-    <div class="note" style="color:{% if ns.hijau > 0 %}#166534{% else %}#64748b{% endif %};">&gt; 80%</div>
+  <div class="dash-card" id="item-card-hijau" style="background:#f1f5f9!important;">
+    <h3 style="color:#64748b;">🟢 Zona Hijau</h3>
+    <div class="num" id="item-num-hijau" style="font-size:1.6rem;font-weight:800;color:#64748b;">—</div>
+    <div class="note" style="color:#64748b;">&gt; 80%</div>
   </div>
-  <div class="dash-card" style="background:{% if rata_score is not none and rata_score > 0 %}{% if rata_score >= 80 %}#dcfce7{% elif rata_score >= 60 %}#fef9c3{% else %}#fee2e2{% endif %}{% else %}#f1f5f9{% endif %}!important;">
-    <h3 style="color:{% if rata_score is not none and rata_score > 0 %}{% if rata_score >= 80 %}#166534{% elif rata_score >= 60 %}#854d0e{% else %}#991b1b{% endif %}{% else %}#64748b{% endif %};">📊 Rata² Nasional</h3>
-    <div class="num" style="font-size:1.6rem;font-weight:800;color:{% if rata_score is not none and rata_score > 0 %}{% if rata_score >= 80 %}#166534{% elif rata_score >= 60 %}#854d0e{% else %}#991b1b{% endif %}{% else %}#64748b{% endif %};">{{ "%.1f"|format(rata_nasional) }}%</div>
-    <div class="note" style="color:{% if rata_score is not none and rata_score > 0 %}{% if rata_score >= 80 %}#166534{% elif rata_score >= 60 %}#854d0e{% else %}#991b1b{% endif %}{% else %}#64748b{% endif %};">{{ total_item }} item dinilai</div>
+  <div class="dash-card" id="item-card-rata" style="background:#f1f5f9!important;">
+    <h3 style="color:#64748b;">📊 Rata²</h3>
+    <div class="num" id="item-num-rata" style="font-size:1.6rem;font-weight:800;color:#64748b;">—</div>
+    <div class="note" id="item-note-rata" style="color:#64748b;">Loading...</div>
   </div>
 </div>
 
-<!-- Section 2: Item Table -->
+<!-- Best/Worst Summary -->
+<div id="item-bw-summary" style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+  <div style="flex:1;min-width:180px;background:#f0fdf4;border-radius:8px;padding:6px 10px;border:1px solid #bbf7d0;">
+    <div style="font-size:.68rem;font-weight:600;color:#166534;margin-bottom:3px;">🏆 Item Terbaik</div>
+    <div id="item-best-list" style="font-size:.65rem;color:#15803d;">
+      <span style="color:#94a3b8;">Pilih filter...</span>
+    </div>
+  </div>
+  <div style="flex:1;min-width:180px;background:#fef2f2;border-radius:8px;padding:6px 10px;border:1px solid #fecaca;">
+    <div style="font-size:.68rem;font-weight:600;color:#991b1b;margin-bottom:3px;">🔻 Item Terburuk</div>
+    <div id="item-worst-list" style="font-size:.65rem;color:#b91c1c;">
+      <span style="color:#94a3b8;">Pilih filter...</span>
+    </div>
+  </div>
+</div>
+
+<!-- Item Table (JS populated) -->
 <table class="item-table">
 <thead><tr>
-  <th class="sort" onclick="sortT(this,0,'num')">#</th>
-  <th class="sort" onclick="sortT(this,1,'str')">Kat</th>
-  <th class="sort" onclick="sortT(this,2,'str')">Item</th>
-  <th class="sort" onclick="sortT(this,3,'num')">Bobot</th>
-  <th class="sort" onclick="sortT(this,4,'num')">Rata²</th>
+  <th class="sort" onclick="sortItemTable(0,'num')">#</th>
+  <th class="sort" onclick="sortItemTable(1,'str')">Kat</th>
+  <th class="sort" onclick="sortItemTable(2,'str')">Item</th>
+  <th class="sort" onclick="sortItemTable(3,'num')">Bobot</th>
+  <th class="sort" onclick="sortItemTable(4,'num')">Rata²</th>
   <th>Jawaban</th>
-  <th style="width:38px;text-align:center" class="sort" onclick="sortT(this,6,'num')">⚡</th>
-  <th style="width:55px;text-align:center">📸</th>
+  <th style="width:38px;text-align:center" class="sort" onclick="sortItemTable(6,'num')">⚡</th>
   <th style="width:50px;text-align:center">🏅</th>
   <th style="width:40px">🔍</th>
 </tr></thead>
-<tbody>
-
-{% for it in problem_items %}
-{% set badge = '' %}
-{% for b in best_items %}{% if b.idx|string == it.idx|string %}{% set badge = '🏆' %}{% endif %}{% endfor %}
-{% for w in worst_items %}{% if w.idx|string == it.idx|string %}{% set badge = '🔻' %}{% endif %}{% endfor %}
-{% set pcls = 'red' if it.priority_label == 'tinggi' else 'yellow' if it.priority_label == 'sedang' else 'green' %}
-{% set score_cls = 'red' if it.avg_score < 60 else 'yellow' if it.avg_score < 80 else 'green' %}
-{% set prio_icon = '🔴' if it.priority_label == 'tinggi' else '🟡' if it.priority_label == 'sedang' else '🟢' %}
-<tr>
-  <td>{{ it.rank }}</td>
-  <td>{{ it.cat }}</td>
-  <td style="max-width:160px;white-space:normal;word-break:break-word;">{{ it.label }}</td>
-  <td>{{ "%.0f"|format(it.weight * 100) }}%</td>
-  <td class="{{ score_cls }}" style="font-weight:600;">{{ "%.1f"|format(it.avg_score) }}%</td>
-  <td style="font-size:.6rem;">
-    {% for o in it.opts %}<span style="color:{{ '#dc2626' if o.is_no else '#16a34a' }};margin-right:2px;">{{ o.label[:12] }}{{ '..' if o.label|length > 12 }} {{ o.count }}</span>{% if not loop.last %}<span style="margin:0 1px;color:#cbd5e1;">|</span>{% endif %}{% endfor %}
-  </td>
-  <td class="{{ pcls }}" style="font-weight:600;text-align:center;">{{ prio_icon }}</td>
-  <td style="text-align:center;">{% if it.foto_issues > 0 %}<span style="color:#dc2626;font-weight:600;font-size:.7rem;">⚠️{{ it.foto_issues }}</span>{% else %}<span style="color:#94a3b8;font-size:.65rem;">—</span>{% endif %}</td>
-  <td style="text-align:center;font-size:.8rem;">{{ badge }}</td>
-  <td style="text-align:center;">
-    <button onclick="toggelKantorList('{{ it.idx }}')" style="background:transparent;border:1px solid #d1d5db;border-radius:4px;padding:2px 6px;font-size:.7rem;cursor:pointer;color:#6366f1;">🔍</button>
-  </td>
-</tr>
-<tr id="kantor-list-{{ it.idx }}" style="display:none;">
-  <td colspan="10" style="padding:6px 10px;background:#f8fafc;border-bottom:2px solid #e2e8f0;">
-<div style="font-size:.65rem;color:#64748b;margin-bottom:4px;">📋 Kantor dengan status kurang:</div>
-    <div id="kantor-content-{{ it.idx }}" style="max-height:300px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:6px;">
-      <span style="color:#94a3b8;font-size:.6rem;">Memuat...</span>
-    </div>
-  </td>
-</tr>
-{% endfor %}
-{% else %}
-<tr><td colspan="9" class="empty">📭 Belum ada data survey. Silakan isi checklist terlebih dahulu.</td></tr>
-{% endif %}
+<tbody id="item-table-body">
+<tr><td colspan="9" class="empty">📭 Memuat data...</td></tr>
 </tbody>
 </table>
+
+<script>
+// ── Filter state ──
+let itemStatsFilter = { area: '', wilayah: '' };
+let itemStatsData = null;
+let itemStatsSort = { col: 0, dir: 'asc' };
+
+// ── Area/Wilayah filter data ──
+const itemAreaData = {};
+{% if area_summaries %}
+  {% for a in area_summaries %}
+    itemAreaData['{{ a.code }}'] = { name: '{{ a.name|e }}', wil: {} };
+    {% for w in a.wilayahs %}
+      itemAreaData['{{ a.code }}'].wil['{{ w.wilayah_code }}'] = '{{ w.wilayah_name|e }}';
+    {% endfor %}
+  {% endfor %}
+{% endif %}
+
+// ── Populate filter dropdowns ──
+function populateItemFilters() {
+  const selArea = document.getElementById('item-filter-area');
+  const selWil = document.getElementById('item-filter-wilayah');
+  selArea.innerHTML = '<option value="">🌐 Semua Area</option>';
+  for (const ac of Object.keys(itemAreaData).sort()) {
+    selArea.innerHTML += `<option value="${ac}">${itemAreaData[ac].name} (${ac})</option>`;
+  }
+  updateItemWilayahFilter();
+}
+
+function updateItemWilayahFilter() {
+  const selArea = document.getElementById('item-filter-area');
+  const selWil = document.getElementById('item-filter-wilayah');
+  const ac = selArea.value;
+  selWil.innerHTML = '<option value="">📍 Semua Wilayah</option>';
+  selWil.disabled = !ac;
+  if (ac && itemAreaData[ac]) {
+    for (const wc of Object.keys(itemAreaData[ac].wil).sort()) {
+      selWil.innerHTML += `<option value="${wc}">${itemAreaData[ac].wil[wc]} (${wc})</option>`;
+    }
+  }
+}
+
+function loadItemStats() {
+  const ac = document.getElementById('item-filter-area').value;
+  const wc = document.getElementById('item-filter-wilayah').value;
+  itemStatsFilter = { area: ac, wilayah: wc };
+  document.getElementById('item-stats-label').textContent = 'Memuat...';
+
+  let url = `/survey/api/kantor-checklist/item-stats?area_code=${encodeURIComponent(ac)}&wilayah_code=${encodeURIComponent(wc)}`;
+  fetch(url)
+    .then(r => r.json())
+    .then(d => {
+      if (!d.ok) throw new Error(d.error || 'Unknown');
+      itemStatsData = d;
+      renderItemStats(d);
+    })
+    .catch(e => {
+      document.getElementById('item-stats-label').textContent = '❌ Gagal: ' + e.message;
+    });
+}
+
+function renderItemStats(d) {
+  const label = !d.filter.area ? '🌐 Nasional' : d.filter.area + (d.filter.wilayah ? ' > ' + d.filter.wilayah : '');
+  document.getElementById('item-stats-label').textContent = label + ' — ' + (d.total_sessions || 0) + ' survei';
+
+  // Scorecard
+  const setCard = (id, numId, cardId, val, bg1, bg2, c1, c2) => {
+    const card = document.getElementById(cardId);
+    const num = document.getElementById(numId);
+    card.style.background = (val > 0 ? bg1 : '#f1f5f9') + '!important';
+    card.style.color = val > 0 ? c1 : '#64748b';
+    num.textContent = val;
+    num.style.color = val > 0 ? c2 : '#64748b';
+  };
+  setCard('item-num-merah','item-card-merah', d.merah, '#fee2e2', '#991b1b', '#991b1b');
+  setCard('item-num-kuning','item-card-kuning', d.kuning, '#fef9c3', '#854d0e', '#854d0e');
+  setCard('item-num-hijau','item-card-hijau', d.hijau, '#dcfce7', '#166534', '#166534');
+
+  // Rata-rata card
+  const rataCard = document.getElementById('item-card-rata');
+  const rataNum = document.getElementById('item-num-rata');
+  const rataNote = document.getElementById('item-note-rata');
+  const rs = d.rata_all;
+  if (rs && rs > 0) {
+    const rc = rs >= 80 ? '#dcfce7' : rs >= 60 ? '#fef9c3' : '#fee2e2';
+    const tc = rs >= 80 ? '#166534' : rs >= 60 ? '#854d0e' : '#991b1b';
+    rataCard.style.background = rc + '!important';
+    rataNum.textContent = rs + '%';
+    rataNum.style.color = tc;
+    rataNote.textContent = d.items.length + ' item dinilai';
+    rataNote.style.color = tc;
+  } else {
+    rataCard.style.background = '#f1f5f9!important';
+    rataNum.textContent = '—';
+    rataNum.style.color = '#64748b';
+    rataNote.textContent = 'Belum ada data';
+    rataNote.style.color = '#64748b';
+  }
+
+  // Best / Worst
+  const bestDiv = document.getElementById('item-best-list');
+  const worstDiv = document.getElementById('item-worst-list');
+  if (d.best_items && d.best_items.length > 0) {
+    bestDiv.innerHTML = d.best_items.map(item =>
+      `<span class="best-worst-badge best-badge">🏆 ${item.label.slice(0,35)} — ${item.avg_score}%</span>`
+    ).join('');
+  } else {
+    bestDiv.innerHTML = '<span style="color:#94a3b8;">Tidak ada item terbaik</span>';
+  }
+  if (d.worst_items && d.worst_items.length > 0) {
+    worstDiv.innerHTML = d.worst_items.map(item =>
+      `<span class="best-worst-badge worst-badge">🔻 ${item.label.slice(0,35)} — ${item.avg_score}%</span>`
+    ).join('');
+  } else {
+    worstDiv.innerHTML = '<span style="color:#94a3b8;">Tidak ada item terburuk</span>';
+  }
+
+  // Table
+  renderItemTable(d);
+}
+
+function renderItemTable(d) {
+  const tbody = document.getElementById('item-table-body');
+  if (!d.items || d.items.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty">📭 Tidak ada data untuk filter ini</td></tr>';
+    return;
+  }
+  // Sort by score ascending (worst first) for default
+  const sorted = [...d.items].sort((a,b) => a.avg_score - b.avg_score);
+  const bestSet = new Set((d.best_items||[]).map(x => x.idx));
+  const worstSet = new Set((d.worst_items||[]).map(x => x.idx));
+  let html = '';
+  sorted.forEach((it, i) => {
+    const badge = bestSet.has(it.idx) ? '🏆' : worstSet.has(it.idx) ? '🔻' : '';
+    const sc = it.avg_score < 60 ? 'red' : it.avg_score < 80 ? 'yellow' : 'green';
+    const prio = it.avg_score < 60 ? '🔴' : it.avg_score < 80 ? '🟡' : '🟢';
+    html += `<tr>
+      <td>${i+1}</td>
+      <td>${it.cat}</td>
+      <td style="max-width:160px;white-space:normal;word-break:break-word;">${it.label}</td>
+      <td>${(it.weight*100).toFixed(0)}%</td>
+      <td class="${sc}" style="font-weight:600;">${it.avg_score.toFixed(1)}%</td>
+      <td style="font-size:.6rem;">${it.opts.map(o => `<span style="color:${o.is_no?'#dc2626':'#16a34a'};margin-right:2px;">${o.label.slice(0,12)}${o.label.length>12?'..':''} ${o.count}</span>`).join('<span style="margin:0 1px;color:#cbd5e1;">|</span>')}</td>
+      <td style="font-weight:600;text-align:center;">${prio}</td>
+      <td style="text-align:center;font-size:.8rem;">${badge}</td>
+      <td style="text-align:center;">
+        <button onclick="toggelKantorList('${it.idx}')" style="background:transparent;border:1px solid #d1d5db;border-radius:4px;padding:2px 6px;font-size:.7rem;cursor:pointer;color:#6366f1;">🔍</button>
+      </td>
+    </tr>`;
+    html += `<tr id="kantor-list-${it.idx}" style="display:none;"><td colspan="9" style="padding:6px 10px;background:#f8fafc;border-bottom:2px solid #e2e8f0;">
+      <div style="font-size:.65rem;color:#64748b;margin-bottom:4px;">📋 Kantor dengan status kurang:</div>
+      <div id="kantor-content-${it.idx}" style="max-height:300px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:6px;">
+        <span style="color:#94a3b8;font-size:.6rem;">Memuat...</span>
+      </div>
+    </td></tr>`;
+  });
+  tbody.innerHTML = html;
+}
+
+function sortItemTable(col, type) {
+  if (!itemStatsData) return;
+  const dir = (itemStatsSort.col === col && itemStatsSort.dir === 'asc') ? 'desc' : 'asc';
+  itemStatsSort = { col, dir };
+  const sorted = [...itemStatsData.items].sort((a,b) => {
+    let va, vb;
+    if (col === 0) { va = a.avg_score; vb = b.avg_score; }
+    else if (col === 1) { va = a.cat; vb = b.cat; }
+    else if (col === 2) { va = a.label; vb = b.label; }
+    else if (col === 3) { va = a.weight; vb = b.weight; }
+    else if (col === 4) { va = a.avg_score; vb = b.avg_score; }
+    else { va = (a.opts||[]).reduce((s,o) => s + (o.is_no ? o.count : 0), 0); vb = (b.opts||[]).reduce((s,o) => s + (o.is_no ? o.count : 0), 0); }
+    if (typeof va === 'string') return dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+    return dir === 'asc' ? va - vb : vb - va;
+  });
+  renderItemTable({...itemStatsData, items: sorted});
+}
+
+// ── Connect to tab switch — populate & load ──
+document.addEventListener('DOMContentLoaded', function() {
+  populateItemFilters();
+  loadItemStats();
+});
+
+// ── Hook into tab switching ──
+const origTabSwitch = window.switchTab || function(){};
+window.switchTab = function(tab) {
+  if (tab === 'item') {
+    // Update wilayah dropdown when area changes
+    document.getElementById('item-filter-area').addEventListener('change', updateItemWilayahFilter);
+    populateItemFilters();
+    loadItemStats();
+  }
+  if (typeof origTabSwitch === 'function') origTabSwitch(tab);
+};
+
+// ── Hook into existing tab system ──
+// Re-run filters when the per-item tab becomes visible
+(function(){
+const observer = new MutationObserver(function() {
+  const tab = document.getElementById('tab-item');
+  if (tab && tab.style.display !== 'none') {
+    // Tab is visible
+  }
+});
+})();
+
+// ── Add event listener for area change ──
+setTimeout(function(){
+  const selArea = document.getElementById('item-filter-area');
+  if (selArea) {
+    selArea.addEventListener('change', function(){
+      document.getElementById('item-filter-wilayah').value = '';
+      updateItemWilayahFilter();
+      loadItemStats();
+    });
+  }
+  const selWil = document.getElementById('item-filter-wilayah');
+  if (selWil) selWil.addEventListener('change', loadItemStats);
+}, 500);
+</script>
 </div>
 
 <!-- Tab: Per Cabang -->
