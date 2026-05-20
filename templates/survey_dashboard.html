@@ -197,7 +197,16 @@ img.auto-orient { max-height:100px;object-fit:contain;background:#f1f5f9;border-
   </div>
 </div>
 
-<!-- Best/Worst Summary -->
+<!-- Category Scorecards + Best/Worst Summary -->
+<div id="item-cat-cards" style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+</div>
+<div id="cat-overall-bar" style="display:none;margin-bottom:8px;">
+  <div style="background:white;border-radius:8px;padding:6px 12px;border:1px solid #e2e8f0;display:flex;align-items:center;gap:8px;">
+    <span style="font-size:.7rem;font-weight:600;">📊 Skor Tertimbang (per bobot kategori):</span>
+    <span id="cat-overall-score" style="font-size:1rem;font-weight:800;"></span>
+    <span id="cat-overall-flat" style="font-size:.65rem;color:#64748b;"></span>
+  </div>
+</div>
 <div id="item-bw-summary" style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
   <div style="flex:1;min-width:180px;background:#f0fdf4;border-radius:8px;padding:6px 10px;border:1px solid #bbf7d0;">
     <div style="font-size:.68rem;font-weight:600;color:#166534;margin-bottom:3px;">🏆 Item Terbaik</div>
@@ -237,16 +246,29 @@ let itemStatsFilter = { area: '', wilayah: '' };
 let itemStatsData = null;
 let itemStatsSort = { col: 0, dir: 'asc' };
 
-// ── Area/Wilayah filter data ──
-const itemAreaData = {};
-{% if area_summaries %}
-  {% for a in area_summaries %}
-    itemAreaData['{{ a.code }}'] = { name: '{{ a.name|e }}', wil: {} };
-    {% for w in a.wilayahs %}
-      itemAreaData['{{ a.code }}'].wil['{{ w.wilayah_code }}'] = '{{ w.wilayah_name|e }}';
-    {% endfor %}
-  {% endfor %}
-{% endif %}
+// ── Area/Wilayah filter data — fetch from API instead of Jinja ──
+let itemAreaData = {};
+
+function fetchAreaData() {
+  fetch('/survey/api/kantor-checklist/area-summary')
+    .then(r => r.json())
+    .then(d => {
+      if (!d.ok) throw new Error(d.error || 'Unknown');
+      itemAreaData = {};
+      (d.areas || []).forEach(a => {
+        const aCode = a.code || '';
+        itemAreaData[aCode] = { name: a.name || '', wil: {} };
+      });
+      // Wilayah
+      (d.wilayahs || []).forEach(w => {
+        const aCode = w.area_code || '';
+        if (!itemAreaData[aCode]) itemAreaData[aCode] = { name: w.area_name || '', wil: {} };
+        itemAreaData[aCode].wil[w.wilayah_code || ''] = w.wilayah_name || '';
+      });
+      populateItemFilters();
+    })
+    .catch(e => console.error('Area data fetch error:', e));
+}
 
 // ── Populate filter dropdowns ──
 function populateItemFilters() {
@@ -295,23 +317,24 @@ function renderItemStats(d) {
   const label = !d.filter.area ? '🌐 Nasional' : d.filter.area + (d.filter.wilayah ? ' > ' + d.filter.wilayah : '');
   document.getElementById('item-stats-label').textContent = label + ' — ' + (d.total_sessions || 0) + ' survei';
 
-  // Scorecard
-  const setCard = (id, numId, cardId, val, bg1, bg2, c1, c2) => {
-    const card = document.getElementById(cardId);
-    const num = document.getElementById(numId);
+  // Scorecard — guard against missing elements
+  const gid = (id) => document.getElementById(id);
+  const setCard = (numId, cardId, val, bg1, c1, c2) => {
+    const card = gid(cardId);
+    const num = gid(numId);
+    if (!card || !num) return;
     card.style.background = (val > 0 ? bg1 : '#f1f5f9') + '!important';
-    card.style.color = val > 0 ? c1 : '#64748b';
-    num.textContent = val;
+    num.textContent = val || 0;
     num.style.color = val > 0 ? c2 : '#64748b';
   };
   setCard('item-num-merah','item-card-merah', d.merah, '#fee2e2', '#991b1b', '#991b1b');
   setCard('item-num-kuning','item-card-kuning', d.kuning, '#fef9c3', '#854d0e', '#854d0e');
   setCard('item-num-hijau','item-card-hijau', d.hijau, '#dcfce7', '#166534', '#166534');
 
-  // Rata-rata card
-  const rataCard = document.getElementById('item-card-rata');
-  const rataNum = document.getElementById('item-num-rata');
-  const rataNote = document.getElementById('item-note-rata');
+  // Rata-rata card — guard
+  const rataCard = gid('item-card-rata');
+  const rataNum = gid('item-num-rata');
+  const rataNote = gid('item-note-rata');
   const rs = d.rata_all;
   if (rs && rs > 0) {
     const rc = rs >= 80 ? '#dcfce7' : rs >= 60 ? '#fef9c3' : '#fee2e2';
@@ -329,19 +352,84 @@ function renderItemStats(d) {
     rataNote.style.color = '#64748b';
   }
 
-  // Best / Worst
+  // ── Category scorecards ──
+  const catContainer = gid('item-cat-cards');
+  if (catContainer && d.cat_summary) {
+    let catHtml = '';
+    const keys = Object.keys(d.cat_summary).sort();
+    keys.forEach(cc => {
+      const c = d.cat_summary[cc];
+      const s = c.avg_score;
+      const bg = s >= 80 ? '#dcfce7' : s >= 60 ? '#fef9c3' : '#fee2e2';
+      const tx = s >= 80 ? '#166534' : s >= 60 ? '#854d0e' : s < 1 ? '#94a3b8' : '#991b1b';
+      const pct = s > 0 ? s.toFixed(1) + '%' : '—';
+      catHtml += `<div style="flex:1;min-width:100px;background:${bg};border-radius:8px;padding:5px 8px;text-align:center;">
+        <div style="font-size:.6rem;font-weight:600;color:${tx};">${c.name.slice(0,20)}</div>
+        <div style="font-size:1rem;font-weight:800;color:${tx};">${pct}</div>
+        <div style="font-size:.55rem;color:${tx};">bobot ${c.weight}%</div>
+      </div>`;
+    });
+    catContainer.innerHTML = catHtml;
+
+    // Overall weighted score bar
+    const ovBar = gid('cat-overall-bar');
+    const ovScore = gid('cat-overall-score');
+    const ovFlat = gid('cat-overall-flat');
+    if (d.overall_cat_scored && ovBar) {
+      ovBar.style.display = 'block';
+      const os = d.overall_cat_scored;
+      const osc = os >= 80 ? '#166534' : os >= 60 ? '#854d0e' : '#991b1b';
+      ovScore.textContent = os + '%';
+      ovScore.style.color = osc;
+      if (ovFlat) ovFlat.textContent = '(rata item: ' + (d.rata_all || 0) + '%)';
+    }
+
+    // ── Best/worst per kategori ──
+    let catBwHtml = '';
+    if (d.best_per_cat && d.worst_per_cat) {
+      const sortedCats = Object.keys(d.best_per_cat).sort();
+      sortedCats.forEach(cc => {
+        const c = d.cat_summary[cc] || {};
+        const best = d.best_per_cat[cc] || [];
+        const worst = d.worst_per_cat[cc] || [];
+        catBwHtml += `<div style="margin:4px 0;padding:4px 10px;border-radius:6px;border:1px solid #e2e8f0;background:#fafafa;">
+          <div style="font-size:.65rem;font-weight:600;color:#334155;margin-bottom:3px;">📂 ${c.name || cc} (bobot ${c.weight || '?'}%)</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:140px;">
+              <span style="font-size:.6rem;color:#15803d;font-weight:600;">🏆 Terbaik:</span>
+              <div style="margin-top:2px;">${best.map(it => `<div style="font-size:.6rem;color:#15803d;padding:1px 0;">${it.label.slice(0,30)} — ${it.avg_score}%</div>`).join('') || '<span style="font-size:.6rem;color:#94a3b8;">—</span>'}</div>
+            </div>
+            <div style="flex:1;min-width:140px;">
+              <span style="font-size:.6rem;color:#991b1b;font-weight:600;">🔻 Terburuk:</span>
+              <div style="margin-top:2px;">${worst.map(it => `<div style="font-size:.6rem;color:#991b1b;padding:1px 0;">${it.label.slice(0,30)} — ${it.avg_score}%</div>`).join('') || '<span style="font-size:.6rem;color:#94a3b8;">—</span>'}</div>
+            </div>
+          </div>
+        </div>`;
+      });
+      catBwHtml = `<div id="cat-bw-container" style="margin:6px 0;">${catBwHtml}</div>`;
+    }
+    
+    // Insert cat B/W after overall bar
+    const existingCatBw = gid('cat-bw-container');
+    if (existingCatBw) existingCatBw.outerHTML = catBwHtml;
+    else if (catBwHtml && catContainer) {
+      catContainer.insertAdjacentHTML('afterend', catBwHtml);
+    }
+  }
+
+  // Best / Worst (global)
   const bestDiv = document.getElementById('item-best-list');
   const worstDiv = document.getElementById('item-worst-list');
   if (d.best_items && d.best_items.length > 0) {
     bestDiv.innerHTML = d.best_items.map(item =>
-      `<span class="best-worst-badge best-badge">🏆 ${item.label.slice(0,35)} — ${item.avg_score}%</span>`
+      `<div style="font-size:.68rem;color:#15803d;padding:1px 0;">🏆 ${item.label.slice(0,35)} — ${item.avg_score}%</div>`
     ).join('');
   } else {
     bestDiv.innerHTML = '<span style="color:#94a3b8;">Tidak ada item terbaik</span>';
   }
   if (d.worst_items && d.worst_items.length > 0) {
     worstDiv.innerHTML = d.worst_items.map(item =>
-      `<span class="best-worst-badge worst-badge">🔻 ${item.label.slice(0,35)} — ${item.avg_score}%</span>`
+      `<div style="font-size:.68rem;color:#b91c1c;padding:1px 0;">🔻 ${item.label.slice(0,35)} — ${item.avg_score}%</div>`
     ).join('');
   } else {
     worstDiv.innerHTML = '<span style="color:#94a3b8;">Tidak ada item terburuk</span>';
@@ -408,18 +496,25 @@ function sortItemTable(col, type) {
 }
 
 // ── Connect to tab switch — populate & load ──
-document.addEventListener('DOMContentLoaded', function() {
-  populateItemFilters();
-  loadItemStats();
-});
+(function initItemTab() {
+  const selArea = document.getElementById('item-filter-area');
+  if (selArea) {
+    fetchAreaData();
+    loadItemStats();
+  } else {
+    document.addEventListener('DOMContentLoaded', function() {
+      fetchAreaData();
+      loadItemStats();
+    });
+  }
+})();
 
 // ── Hook into tab switching ──
 const origTabSwitch = window.switchTab || function(){};
 window.switchTab = function(tab) {
   if (tab === 'item') {
-    // Update wilayah dropdown when area changes
     document.getElementById('item-filter-area').addEventListener('change', updateItemWilayahFilter);
-    populateItemFilters();
+    if (!Object.keys(itemAreaData).length) fetchAreaData();
     loadItemStats();
   }
   if (typeof origTabSwitch === 'function') origTabSwitch(tab);

@@ -3586,9 +3586,10 @@ async def branch_tree_api(request: Request, session: Optional[str] = Cookie(None
 
 
 @router.get("/survey/api/kantor-checklist/item-stats")
+@router.post("/survey/api/log-share")
 async def item_stats_api(request: Request, session: Optional[str] = Cookie(None),
                          area_code: str = Query(""), wilayah_code: str = Query("")):
-    """Per-item stats dengan filter area/wilayah — best/worst items per area."""
+    """Per-item + per-kategori stats dengan filter area/wilayah."""
     user = get_user_from_cookie(session)
     if not user:
         return JSONResponse({"ok": False, "error": "Not logged in"}, status_code=401)
@@ -3637,6 +3638,12 @@ async def item_stats_api(request: Request, session: Optional[str] = Cookie(None)
         if not dbitems:
             return JSONResponse({"ok": False, "error": "No items"}, status_code=500)
 
+        # Ambil kategori + bobot — pake cursor terpisah biar gak timpa data checklist
+        cur2 = conn.cursor()
+        cur2.execute("SELECT cat_code, cat_name, cat_weight::float FROM origo.survey_categories ORDER BY sort_order")
+        cats_raw = {r[0]: {"name": r[1], "weight": r[2]} for r in cur2.fetchall()}
+        cur2.close()
+
         # Ambil opsi
         cur2 = conn.cursor()
         cur2.execute("""
@@ -3650,9 +3657,17 @@ async def item_stats_api(request: Request, session: Optional[str] = Cookie(None)
             opt_labels.setdefault(tc, {})[ov] = {"label": lbl, "is_no": inh, "weight_mult": float(wm)}
         cur2.close()
 
-        # Kumpulin status per item per kantor — filter area/wilayah
+        # Kelompokkan items per kategori
+        cat_items = {}
+        for i, di in enumerate(dbitems):
+            cc = di["cat"]
+            cat_items.setdefault(cc, []).append({"idx": i, "weight": di["weight"]})
+
+        # Kumpulin status per item — sambil filter area/wilayah
         ist = {i: {"total": 0, "score_sum": 0.0, "opts": {}} for i in range(len(dbitems))}
+        cat_survey_scores = {cc: [] for cc in cats_raw}
         total_sessions = 0
+
         for r in cur.fetchall():
             kc = r[0]
             if area_code:
@@ -3668,24 +3683,49 @@ async def item_stats_api(request: Request, session: Optional[str] = Cookie(None)
 
             sd = r[1]
             total_sessions += 1
-            for s in (sd or []):
-                try:
-                    sv = int(s.get("status") if isinstance(s, dict) else s)
-                except (ValueError, AttributeError):
-                    continue
-                for i in range(len(dbitems)):
-                    tc = dbitems[i]["type"]
+
+            # Per-item accumulation — status_data index = item index
+            if sd:
+                status_data = sd if isinstance(sd, list) else []
+                for idx, s in enumerate(status_data):
+                    if idx >= len(dbitems):
+                        break
+                    try:
+                        sv = int(s.get("status") if isinstance(s, dict) else s)
+                    except (ValueError, AttributeError):
+                        continue
+                    tc = dbitems[idx]["type"]
                     wm = opt_labels.get(tc, {}).get(sv, {}).get("weight_mult", 0.0)
-                    ist[i]["total"] += 1
-                    ist[i]["opts"][sv] = ist[i]["opts"].get(sv, 0) + 1
-                    ist[i]["score_sum"] += wm
+                    ist[idx]["total"] += 1
+                    ist[idx]["opts"][sv] = ist[idx]["opts"].get(sv, 0) + 1
+                    ist[idx]["score_sum"] += wm
 
-        # Hitung per item
-        cats_data = {}
-        cur.execute("SELECT cat_code, cat_name FROM origo.survey_categories")
-        for r in cur.fetchall():
-            cats_data[r[0]] = {"name": r[1]}
+            # Per-category score per survey (weighted by item_weight)
+            if sd:
+                status_data = sd if isinstance(sd, list) else []
+                for cc, citems in cat_items.items():
+                    cat_sum = 0.0
+                    cat_max = 0.0
+                    for ci in citems:
+                        idx = ci["idx"]
+                        iw = ci["weight"]
+                        cat_max += iw
+                        if idx < len(status_data):
+                            s = status_data[idx] if isinstance(status_data[idx], dict) else {}
+                            try:
+                                sv = int(s.get("status", -1))
+                            except (ValueError, TypeError):
+                                sv = -1
+                        else:
+                            sv = -1
+                        if sv >= 0:
+                            tc = dbitems[idx]["type"]
+                            actual_wm = opt_labels.get(tc, {}).get(sv, {}).get("weight_mult", 0.0)
+                            cat_sum += iw * actual_wm
+                    cat_pct = round(cat_sum / cat_max * 100, 1) if cat_max > 0 else 0
+                    cat_survey_scores[cc].append(cat_pct)
 
+        # Build items response
         items = []
         for i in range(len(dbitems)):
             s = ist[i]
@@ -3708,9 +3748,27 @@ async def item_stats_api(request: Request, session: Optional[str] = Cookie(None)
                 "total_dinilai": s["total"],
             })
 
-        # Sort by score ascending (worst first = biggest problems)
-        items_sorted = sorted(items, key=lambda x: x["avg_score"])
+        # Per-category summary
+        cat_summary = {}
+        overall_wsum = 0.0
+        overall_wscores = 0.0
+        for cc in sorted(cat_items.keys()):
+            scores = cat_survey_scores.get(cc, [])
+            cat_avg = round(sum(scores) / len(scores), 1) if scores else 0
+            cw = cats_raw.get(cc, {}).get("weight", 10)
+            cat_summary[cc] = {
+                "code": cc,
+                "name": cats_raw.get(cc, {}).get("name", cc),
+                "weight": cw,
+                "avg_score": cat_avg,
+                "count": len(scores),
+            }
+            overall_wsum += cw
+            overall_wscores += cat_avg * cw
+        overall_cat_scored = round(overall_wscores / overall_wsum, 1) if overall_wsum > 0 else 0
 
+        # Best/worst items
+        items_sorted = sorted(items, key=lambda x: x["avg_score"])
         merah = sum(1 for x in items if x["avg_score"] < 60)
         kuning = sum(1 for x in items if 60 <= x["avg_score"] < 80)
         hijau = sum(1 for x in items if x["avg_score"] >= 80)
@@ -3722,6 +3780,18 @@ async def item_stats_api(request: Request, session: Optional[str] = Cookie(None)
         if len(worst_items) < 5:
             worst_items = [x for x in items_sorted if x["avg_score"] < 80][:5]
 
+        # Best/worst per category
+        best_per_cat = {}
+        worst_per_cat = {}
+        for cc in cat_items:
+            cc_items = [x for x in items_sorted if x["cat"] == cc]
+            if cc_items:
+                best_per_cat[cc] = cc_items[-3:] if cc_items else []
+                best_per_cat[cc].reverse()
+                worst_per_cat[cc] = [x for x in cc_items if x["avg_score"] < 80][:3] or cc_items[:3]
+
+        cur.close(); conn.close()
+
         return JSONResponse({
             "ok": True,
             "items": items,
@@ -3731,13 +3801,14 @@ async def item_stats_api(request: Request, session: Optional[str] = Cookie(None)
             "worst_items": worst_items,
             "total_sessions": total_sessions,
             "filter": {"area_code": area_code, "wilayah_code": wilayah_code},
+            "cat_summary": cat_summary,
+            "overall_cat_scored": overall_cat_scored,
+            "best_per_cat": best_per_cat,
+            "worst_per_cat": worst_per_cat,
         })
     except Exception as e:
         import traceback; traceback.print_exc()
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
-
-
-@router.post("/survey/api/log-share")
 async def log_share_api(request: Request, session: Optional[str] = Cookie(None)):
     """Catat log siapa yg share report (via Web Share API)."""
     user = get_user_from_cookie(session)
