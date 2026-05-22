@@ -1116,23 +1116,6 @@ async def survey_dashboard(request: Request, session: Optional[str] = Cookie(Non
                         "foto_desc": str(foto_desc or "")
                     })
                 except: pass
-        # Ambil timestamp laporan terakhir
-        conn_ts = get_db(); cur_ts = conn_ts.cursor()
-        cur_ts.execute("""
-            SELECT MAX(GREATEST(
-                COALESCE(updated_at, '1970-01-01'::timestamp),
-                COALESCE(submitted_at, '1970-01-01'::timestamp)
-            ))
-            FROM origo.kantor_checklist_data
-            WHERE yes_count IS NOT NULL AND total_items > 0
-        """)
-        last_ts = cur_ts.fetchone()[0]
-        cur_ts.close(); conn_ts.close()
-        if last_ts and last_ts.year > 1970:
-            last_report_update = last_ts.strftime('%d-%m-%Y %H:%M WIB')
-        else:
-            last_report_update = 'Belum ada data'
-
         cur.close(); conn.close()
         # Ambil opt_labels + weight_mult dari DB untuk tipe pertanyaan
         conn_ol = get_db()
@@ -1576,7 +1559,7 @@ async def survey_dashboard(request: Request, session: Optional[str] = Cookie(Non
         import traceback
         traceback.print_exc()
 
-    return TemplateResponse("survey_dashboard.html", {"request": request, "user_id": user["user_id"], "user_name": user["fullname"], "fullname": user["fullname"], "fullname": user["fullname"], "user_role": user.get("role",""), "current_path": "/survey/kantor-checklist/dashboard", "total_branches": total_branches, "done_main": done_main, "done_submit": done_submit, "done_draft": done_draft, "done_mt": done_mt, "merged": merged, "top5": top5, "worst5": worst5, "problem_items": problem_items, "best_items": best_items, "worst_items": worst_items, "terbaru": latest, "merged_with_score": mws, "scores_list": sl, "draft_list": dr, "avg_dur": avg_dur, "avg_main": avg_main, "k": ctl, "v": ctl, "cat_names": ctl, "all_sessions": all_sessions, "menu_items": _get_menu(), "foto_warnings": foto_warnings_list, "foto_referensi": foto_referensi, "db_items_ref": dbi_fw, "item_kantors_json": item_kantors_json_str, "trend_icon": trend_icon, "area_summaries": area_summaries, "pic_activities": pic_activities, "active_pic_count": active_pic_count, "draft_count": draft_count, "today_submit_count": today_submit_count, "total_pic": total_pic, "last_report_update": last_report_update})
+    return TemplateResponse("survey_dashboard.html", {"request": request, "user_id": user["user_id"], "user_name": user["fullname"], "fullname": user["fullname"], "fullname": user["fullname"], "user_role": user.get("role",""), "current_path": "/survey/kantor-checklist/dashboard", "total_branches": total_branches, "done_main": done_main, "done_submit": done_submit, "done_draft": done_draft, "done_mt": done_mt, "merged": merged, "top5": top5, "worst5": worst5, "problem_items": problem_items, "best_items": best_items, "worst_items": worst_items, "terbaru": latest, "merged_with_score": mws, "scores_list": sl, "draft_list": dr, "avg_dur": avg_dur, "avg_main": avg_main, "k": ctl, "v": ctl, "cat_names": ctl, "all_sessions": all_sessions, "menu_items": _get_menu(), "foto_warnings": foto_warnings_list, "foto_referensi": foto_referensi, "db_items_ref": dbi_fw, "item_kantors_json": item_kantors_json_str, "trend_icon": trend_icon, "area_summaries": area_summaries, "pic_activities": pic_activities, "active_pic_count": active_pic_count, "draft_count": draft_count, "today_submit_count": today_submit_count, "total_pic": total_pic})
 
 @router.get("/survey/api/kantor-checklist/dashboard-data")
 async def dashboard_data_api(request: Request, session: Optional[str] = Cookie(None), cat: str = Query(""), item: str = Query(""), kantor_code: str = Query("")):
@@ -3021,7 +3004,6 @@ async def api_refresh_reports(request: Request, session: Optional[str] = Cookie(
             img = Image.new("RGB", (total_w, total_h), BG)
             draw = ImageDraw.Draw(img)
             draw.text((pad, 10), f"On Progress ({len(ongoing_list)})", font=font_reg, fill=TITLE_CLR)
-            draw.text((pad, 24), f"- {ts_str}", font=font_sm, fill=TXT_DIM)
 
             def _draw_one_col(data_flat, x0, w):
                 y = hdr_y
@@ -3203,7 +3185,6 @@ async def api_refresh_reports(request: Request, session: Optional[str] = Cookie(
             img = Image.new("RGB", (total_w, total_h), BG)
             draw = ImageDraw.Draw(img)
             draw.text((pad, 10), f"Submitted ({len(submitted_list)})", font=font_reg, fill=TITLE_CLR)
-            draw.text((pad, 24), f"- {ts_str}", font=font_sm, fill=TXT_DIM)
 
             def _draw_one_col(data_flat, x0, w):
                 y = hdr_y
@@ -3897,21 +3878,6 @@ async def item_stats_api(request: Request, session: Optional[str] = Cookie(None)
 
         cur.close(); conn.close()
 
-        # Timestamp laporan: MAX submitted_at/updated_at dari semua session yg difilter
-        _tmp_conn = get_db(); _tmp_cur = _tmp_conn.cursor()
-        _tmp_cur.execute("""
-            SELECT MAX(GREATEST(COALESCE(updated_at, '1970-01-01'), COALESCE(submitted_at, '1970-01-01')))
-            FROM origo.kantor_checklist_data
-            WHERE workflow_status IN ('submitted','reviewed','approved')
-        """)
-        _lr = _tmp_cur.fetchone()[0]
-        if _lr:
-            _lr = _lr.astimezone(__import__('zoneinfo').ZoneInfo("Asia/Jakarta"))
-            last_ts_str = _lr.strftime('%d-%m-%Y %H:%M WIB')
-        else:
-            last_ts_str = 'Belum ada data'
-        _tmp_cur.close(); _tmp_conn.close()
-
         return JSONResponse({
             "ok": True,
             "items": items,
@@ -3921,7 +3887,6 @@ async def item_stats_api(request: Request, session: Optional[str] = Cookie(None)
             "worst_items": worst_items,
             "total_sessions": total_sessions,
             "filter": {"area_code": area_code, "wilayah_code": wilayah_code},
-            "last_update": last_ts_str,
             "cat_summary": cat_summary,
             "overall_cat_scored": overall_cat_scored,
             "best_per_cat": best_per_cat,
@@ -4083,8 +4048,6 @@ async def item_evidence_api(request: Request):
     
     item_idx = request.query_params.get("item_idx")
     opt_status = request.query_params.get("opt_status", "4")
-    area_code = request.query_params.get("area_code", "")
-    wilayah_code = request.query_params.get("wilayah_code", "")
     
     if not item_idx:
         return JSONResponse({"ok": False, "error": "Parameter item_idx diperlukan"}, status_code=400)
@@ -4136,50 +4099,10 @@ async def item_evidence_api(request: Request):
             ORDER BY kd.tgl_cek DESC
         """)
         
-        # Filter area/wilayah: ambil mapping tree dulu
-        _branch_area = {}
-        if area_code or wilayah_code:
-            _cur2 = conn.cursor()
-            _cur2.execute("""
-                WITH RECURSIVE tree AS (
-                    SELECT n.id, n.parent_id, n.office_code, n.branch_kind,
-                           1 AS depth, CAST(n.node_code AS text) AS path_code
-                    FROM origo.network_tree_node n
-                    WHERE n.version_id = (SELECT id FROM origo.network_tree_version WHERE is_published = TRUE LIMIT 1)
-                      AND n.parent_id IS NULL
-                    UNION ALL
-                    SELECT n.id, n.parent_id, n.office_code, n.branch_kind,
-                           t.depth + 1,
-                           t.path_code || '>' || n.node_code
-                    FROM origo.network_tree_node n
-                    JOIN tree t ON n.parent_id = t.id
-                    WHERE n.version_id = (SELECT id FROM origo.network_tree_version WHERE is_published = TRUE LIMIT 1)
-                )
-                SELECT office_code, path_code FROM tree WHERE office_code IS NOT NULL AND branch_kind NOT IN ('area','wilayah')
-            """)
-            for _r in _cur2.fetchall():
-                pc = (_r[1] or "").split(">")
-                _branch_area[_r[0]] = {
-                    "area_code": pc[1] if len(pc) >= 2 else "?",
-                    "wilayah_code": pc[2] if len(pc) >= 3 else pc[1] if len(pc) >= 2 else "?",
-                }
-            _cur2.close()
-
         import json
         results = []
         for r in cur.fetchall():
             row_id, kantor_code, kantor_nama, sd_raw, tgl_cek, pic, nomor_survei, submitted_at = r
-            
-            # Filter area/wilayah
-            if area_code or wilayah_code:
-                ba = _branch_area.get(kantor_code, {})
-                if area_code and ba.get("area_code") != area_code:
-                    continue
-                if wilayah_code:
-                    ba_wil = ba.get("wilayah_code", "")
-                    comp_code = ba.get("area_code", "") + ">" + ba_wil
-                    if ba_wil != wilayah_code and comp_code != wilayah_code:
-                        continue
             
             if isinstance(sd_raw, str):
                 sd = json.loads(sd_raw)

@@ -113,6 +113,7 @@ img.auto-scale { max-width:90vw; max-height:80vh; object-fit:contain; background
 {% set lock_expired = lock_expired_mode|default(false) %}
 {% set workflow_status_server = workflow_status|default('') %}
 {% set same_user = (workflow_status == 'draft') and (existing_pic == user_name) %}
+<input type="hidden" id="readonly-mode" value="{{ 'true' if readonly_mode else 'false' }}">
 <!-- Form items — server-side rendered -->
 <form id="checklist-form">
 {% set cat_order = ['A','B','C','D','E','F','G'] %}
@@ -952,8 +953,17 @@ if (document.querySelector('.video-del-btn')) {
         if (sd[i] && sd[i].status !== undefined && sd[i].status !== null && sd[i].status !== '') {
           var sv = parseInt(sd[i].status, 10);
           if (!isNaN(sv)) {
+            // Read-only mode: set selected class langsung tanpa autoSave
+          var rmode = document.getElementById('readonly-mode');
+          var isReadonly = rmode && rmode.value === 'true';
+          if (isReadonly) {
+            document.querySelectorAll('.item[data-idx="' + i + '"] .status-btn').forEach(function(b2) {
+              b2.classList.toggle('selected', parseInt(b2.getAttribute('data-score'), 10) === sv);
+            });
+          } else {
             toggleStatus(i, sv);
-            itemStates[i].status = sv;
+          }
+          itemStates[i].status = sv;
           }
         }
         if (sd[i] && sd[i].note) {
