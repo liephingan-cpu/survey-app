@@ -1282,7 +1282,17 @@ async def survey_dashboard(request: Request, session: Optional[str] = Cookie(Non
     mws = [x for x in merged if x["main"] is not None]
     dr = [x for x in merged if x.get("main_workflow") == "draft"]
 
-    # ── Analisa Dokumentasi ──
+    # ── Re-survey count ──
+    re_survey_count = 0
+    try:
+        conn_rs = get_db(); cur_rs = conn_rs.cursor()
+        cur_rs.execute(
+            "SELECT COUNT(DISTINCT kantor_code) FROM origo.kantor_checklist_data WHERE survey_seq > 1"
+        )
+        re_survey_count = cur_rs.fetchone()[0] or 0
+        cur_rs.close(); conn_rs.close()
+    except Exception:
+        pass
     foto_warnings_list = []
     foto_referensi = {}  # item_idx -> {status_val: {kode, foto, desc}}
     dbi_fw = _get_items_from_db()
@@ -1579,7 +1589,7 @@ async def survey_dashboard(request: Request, session: Optional[str] = Cookie(Non
         import traceback
         traceback.print_exc()
 
-    return TemplateResponse("survey_dashboard.html", {"request": request, "user_id": user["user_id"], "user_name": user["fullname"], "fullname": user["fullname"], "fullname": user["fullname"], "user_role": user.get("role",""), "current_path": "/survey/kantor-checklist/dashboard", "total_branches": total_branches, "done_main": done_main, "done_submit": done_submit, "done_draft": done_draft, "done_mt": done_mt, "merged": merged, "top5": top5, "worst5": worst5, "problem_items": problem_items, "best_items": best_items, "worst_items": worst_items, "terbaru": latest, "merged_with_score": mws, "scores_list": sl, "draft_list": dr, "avg_dur": avg_dur, "avg_main": avg_main, "k": ctl, "v": ctl, "cat_names": ctl, "all_sessions": all_sessions, "menu_items": _get_menu(), "foto_warnings": foto_warnings_list, "foto_referensi": foto_referensi, "db_items_ref": dbi_fw, "item_kantors_json": item_kantors_json_str, "trend_icon": trend_icon, "area_summaries": area_summaries, "pic_activities": pic_activities, "active_pic_count": active_pic_count, "draft_count": draft_count, "today_submit_count": today_submit_count, "total_pic": total_pic, "last_report_update": last_report_update})
+    return TemplateResponse("survey_dashboard.html", {"request": request, "user_id": user["user_id"], "user_name": user["fullname"], "fullname": user["fullname"], "fullname": user["fullname"], "user_role": user.get("role",""), "current_path": "/survey/kantor-checklist/dashboard", "total_branches": total_branches, "done_main": done_main, "done_submit": done_submit, "done_draft": done_draft, "done_mt": done_mt, "merged": merged, "top5": top5, "worst5": worst5, "problem_items": problem_items, "best_items": best_items, "worst_items": worst_items, "terbaru": latest, "merged_with_score": mws, "scores_list": sl, "draft_list": dr, "avg_dur": avg_dur, "avg_main": avg_main, "k": ctl, "v": ctl, "cat_names": ctl, "all_sessions": all_sessions, "menu_items": _get_menu(), "foto_warnings": foto_warnings_list, "foto_referensi": foto_referensi, "db_items_ref": dbi_fw, "item_kantors_json": item_kantors_json_str, "trend_icon": trend_icon, "area_summaries": area_summaries, "pic_activities": pic_activities, "active_pic_count": active_pic_count, "draft_count": draft_count, "today_submit_count": today_submit_count, "total_pic": total_pic, "last_report_update": last_report_update, "re_survey_count": re_survey_count})
 
 @router.get("/survey/api/kantor-checklist/dashboard-data")
 async def dashboard_data_api(request: Request, session: Optional[str] = Cookie(None), cat: str = Query(""), item: str = Query(""), kantor_code: str = Query("")):
@@ -1746,6 +1756,99 @@ async def dashboard_data_api(request: Request, session: Optional[str] = Cookie(N
             cat_summary[k] = {"name": v["name"], "score": cat_pct, "weight": v["weight"]}
 
         return {"ok": True, "items": detail, "total_items": len(detail), "cats": cat_summary, "cat_filter": cat, "item_filter": item, "sessions": sessions, "comparisons": comparisons}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+# ── Geo data endpoint (for map tab) ──
+@router.get("/survey/api/geo-data")
+async def geo_data_api(request: Request, session: Optional[str] = Cookie(None)):
+    user = get_user_from_cookie(session)
+    if not user:
+        return JSONResponse({"ok": False, "error": "Not logged in"}, status_code=401)
+    try:
+        conn = get_db(); cur = conn.cursor()
+        # Ambil SURVEI TERAKHIR per kantor (bukan semua sequences)
+        cur.execute("""
+            SELECT kcd.kantor_code, kcd.workflow_status, kcd.status_data,
+                   ntn.display_name
+            FROM (
+                SELECT DISTINCT ON (kcd_inner.kantor_code)
+                    kcd_inner.kantor_code, kcd_inner.workflow_status, kcd_inner.status_data
+                FROM origo.kantor_checklist_data kcd_inner
+                WHERE kcd_inner.kantor_code ~ '^[1-9][0-9]{4}$'
+                ORDER BY kcd_inner.kantor_code, kcd_inner.survey_seq DESC
+            ) kcd
+            LEFT JOIN (SELECT DISTINCT office_code, display_name FROM origo.network_tree_node) ntn
+              ON ntn.office_code = kcd.kantor_code
+            ORDER BY kcd.kantor_code
+        """)
+        branches = []
+        has_geo_count = 0
+        for r in cur.fetchall():
+            kode = r[0]
+            status_data = r[2]  # status_data JSON
+            nama = r[3] or kode
+
+            # Parse geo dari status_data JSON
+            geo_points = []
+            foto_count = 0
+            foto_with_geo = 0
+            if status_data:
+                for item in status_data if isinstance(status_data, list) else []:
+                    if isinstance(item, dict):
+                        geo = item.get("geo", "")
+                        foto = item.get("foto", "")
+                        if foto:
+                            foto_count += 1
+                        if geo and "," in geo:
+                            try:
+                                lat, lng = geo.split(",")
+                                geo_points.append({"lat": float(lat), "lng": float(lng), "foto": foto})
+                                if foto:
+                                    foto_with_geo += 1
+                            except:
+                                pass
+
+            branch_info = {
+                "kode": kode,
+                "nama": nama,
+                "status": r[1],
+                "foto_count": foto_count,
+                "foto_with_geo": foto_with_geo,
+            }
+            if geo_points:
+                # Centroid
+                avg_lat = sum(p["lat"] for p in geo_points) / len(geo_points)
+                avg_lng = sum(p["lng"] for p in geo_points) / len(geo_points)
+
+                # Klasifikasi jarak tiap foto dari centroid
+                from math import radians, sin, cos, sqrt, atan2
+                def haversine(lat1, lng1, lat2, lng2):
+                    R = 6371000
+                    dlat = radians(lat2 - lat1)
+                    dlng = radians(lng2 - lng1)
+                    a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlng/2)**2
+                    return R * 2 * atan2(sqrt(a), sqrt(1-a))
+
+                foto_classes = {"normal": 0, "warning": 0, "anomaly": 0}
+                max_distance = 0
+                for p in geo_points:
+                    d = haversine(avg_lat, avg_lng, p["lat"], p["lng"])
+                    if d > max_distance: max_distance = d
+                    if d <= 50: foto_classes["normal"] += 1
+                    elif d <= 200: foto_classes["warning"] += 1
+                    else: foto_classes["anomaly"] += 1
+
+                branch_info["centroid"] = {"lat": round(avg_lat, 6), "lng": round(avg_lng, 6)}
+                branch_info["foto_classes"] = foto_classes
+                branch_info["max_distance_m"] = round(max_distance, 1)
+                branch_info["total_geo_points"] = len(geo_points)
+                has_geo_count += 1
+            branches.append(branch_info)
+
+        cur.close(); conn.close()
+        return {"ok": True, "count": len(branches), "has_geo_count": has_geo_count, "branches": branches}
     except Exception as e:
         import traceback; traceback.print_exc()
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
@@ -1968,6 +2071,55 @@ async def api_new_survey(request: Request, session: Optional[str] = Cookie(None)
         cur.close(); conn.close()
 
         return {"ok": True, "redirect": f"/survey/kantor-checklist/form/{kantor_code}", "nomor_survei": nomor_survei, "existing_draft": False}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+# ── Re-Survey: bikin survey baru untuk cabang yang sudah submitted ──
+@router.post("/survey/api/kantor-checklist/re-survey/{kantor_code}")
+async def api_re_survey(kantor_code: str, request: Request, session: Optional[str] = Cookie(None)):
+    user = get_user_from_cookie(session)
+    if not user:
+        return JSONResponse({"ok": False, "error": "Not logged in"}, status_code=401)
+
+    try:
+        conn = get_db(); cur = conn.cursor()
+
+        # Dapatkan survey_seq terbesar (dari SEMUA row, bukan cuma hari ini)
+        cur.execute(
+            "SELECT COALESCE(MAX(survey_seq), 0) + 1 FROM origo.kantor_checklist_data WHERE kantor_code = %s",
+            (kantor_code,)
+        )
+        next_seq = cur.fetchone()[0] or 1
+
+        # Cek apakah udah ada draft aktif (biar ga duplikat)
+        cur.execute(
+            "SELECT id FROM origo.kantor_checklist_data WHERE kantor_code = %s AND workflow_status = 'draft' LIMIT 1",
+            (kantor_code,)
+        )
+        if cur.fetchone():
+            cur.close(); conn.close()
+            return {"ok": True, "redirect": f"/survey/kantor-checklist/form/{kantor_code}", "existing_draft": True}
+
+        # Generate nomor survey baru
+        from datetime import datetime
+        tgl = datetime.now().strftime('%Y%m%d')
+        nomor_survei = f'SRV-{kantor_code}-{tgl}-{next_seq:03d}'
+
+        # Buat status_data kosong
+        blank_items = [{"status":"", "note":"", "foto":""} for _ in range(ITEM_COUNT)]
+
+        cur.execute(
+            """INSERT INTO origo.kantor_checklist_data
+               (kantor_code, nomor_survei, survey_seq, pic, tgl_cek, status_data, workflow_status, yes_count, no_count, total_items, created_at)
+               VALUES (%s, %s, %s, %s, CURRENT_DATE, %s, 'draft', 0, 0, 0, NOW())""",
+            (kantor_code, nomor_survei, next_seq, user.get("user_id", ""), json.dumps(blank_items))
+        )
+        conn.commit()
+        cur.close(); conn.close()
+
+        return {"ok": True, "redirect": f"/survey/kantor-checklist/form/{kantor_code}", "nomor_survei": nomor_survei}
     except Exception as e:
         import traceback; traceback.print_exc()
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
@@ -2430,6 +2582,34 @@ async def api_upload_foto(request: Request, session: Optional[str] = Cookie(None
         # Baca file dan proses
         contents = await file.read()
 
+        geo_str = form.get("geo", "")
+        
+        # ── Fallback: baca GPS dari EXIF foto asli (kalo frontend ga kirim geo) ──
+        if not geo_str:
+            try:
+                from PIL.ExifTags import GPSTAGS as exif_gps_tags
+                from PIL import Image as PilImg
+                import io as _io
+                _tmp_img = PilImg.open(_io.BytesIO(contents))
+                _exif = _tmp_img._getexif()
+                if _exif:
+                    _gps_info = _exif.get(34853)
+                    if _gps_info:
+                        def _dms_to_decimal(dms, ref):
+                            if dms and len(dms) == 3:
+                                deg, minute, sec = float(dms[0]), float(dms[1]), float(dms[2])
+                                dec = deg + minute/60.0 + sec/3600.0
+                                if ref in ('S', 'W'):
+                                    dec = -dec
+                                return dec
+                            return None
+                        _lat = _dms_to_decimal(_gps_info.get(2), _gps_info.get(1, 'N'))
+                        _lng = _dms_to_decimal(_gps_info.get(4), _gps_info.get(3, 'E'))
+                        if _lat is not None and _lng is not None:
+                            geo_str = f"{_lat:.6f},{_lng:.6f}"
+            except Exception:
+                pass
+
         # Deteksi video dari form flag atau ekstensi
         is_video_from_form = form.get("is_video", "0")
         video_extensions = {".webm", ".mp4", ".mov", ".avi", ".mkv"}
@@ -2560,7 +2740,6 @@ async def api_upload_foto(request: Request, session: Optional[str] = Cookie(None
             cur_lbl.close(); conn_lbl.close()
         except: pass
 
-        geo_str = form.get("geo", "")
         if geo_str:
             stamp_text = f"{now.strftime('%d %b %Y %H:%M')} WIB\n{kantor_code} - {kantor_label_foto[:30]}\n{item_cat}.{idx} | {user_name}\n{geo_str}"
         else:

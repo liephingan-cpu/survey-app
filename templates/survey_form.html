@@ -3,13 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<link rel="icon" href="data:,"><title>📋 Survey — {{ kantor_label }}</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+<link rel="stylesheet" href="/static/survey_redesign.css">
+<title>Survey — {{ kantor_label }}</title>
 <style>
 * { box-sizing:border-box; margin:0; padding:0; }
 body { background:#f1f5f9; font-family:system-ui,-apple-system,sans-serif; padding-bottom:80px; }
-.top-bar { background:#0f172a; color:#e2e8f0; padding:.7rem 1rem; display:flex; justify-content:space-between; align-items:center; font-size:.85rem; position:sticky; top:0; z-index:100; }
+.top-bar { background:#0f172a; color:#e2e8f0; padding:.7rem 1rem; display:flex; flex-wrap:wrap; gap:4px; justify-content:space-between; align-items:center; font-size:.85rem; position:sticky; top:0; z-index:100; }
 .nav-link { color:#93c5fd; text-decoration:none; font-size:.8rem; padding:.25rem .5rem; border-radius:4px; }
 .nav-link:hover { background:rgba(255,255,255,.1); color:#fff; }
+#geo-indicator { display:inline-flex; align-items:center; gap:3px; font-size:.7rem; white-space:nowrap; }
 .section-header { padding:.6rem 1rem; font-weight:700; font-size:.9rem; display:flex; justify-content:space-between; align-items:center; cursor:pointer; border-bottom:2px solid; }
 .section-header .toggle { font-size:.7rem; color:#6b7280; }
 .section-collapsed .item { display:none; }
@@ -50,48 +54,136 @@ img.auto-scale { max-width:90vw; max-height:80vh; object-fit:contain; background
 .btn-primary { background:#2563eb; color:white; border:none; padding:.55rem 1.25rem; border-radius:8px; font-size:.82rem; font-weight:600; cursor:pointer; }
 .btn-primary:disabled { opacity:.5; cursor:not-allowed; }
 </style>
+<style>
+/* ── Form Survey ── Design system aligned ── */
+body {
+  font-family: var(--sv-font, system-ui,-apple-system,sans-serif);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+.section-header {
+  padding: .7rem 1rem; font-weight: 700; font-size: .9rem; display:flex;
+  justify-content:space-between; align-items:center; cursor:pointer; border-bottom:2px solid;
+  transition: background var(--sv-transition, .15s);
+}
+.section-header:hover { background: #f8fafc; }
+.section-header .toggle { font-size:.7rem; color:#94a3b8; }
+.section-collapsed .item { display:none; }
+.section-collapsed .section-header .toggle::after { content:'\f054'; font-family:'Font Awesome 6 Free'; font-weight:900; }
+.section-header .toggle::after { content:'\f078'; font-family:'Font Awesome 6 Free'; font-weight:900; }
+.item { background:white; margin:0 0 1px; padding:.6rem 1rem; transition:background var(--sv-transition, .15s); }
+.item:hover { background:#fafbfc; }
+.item-label { font-size:.82rem; font-weight:500; line-height:1.4; color:var(--sv-text, #1e293b); }
+.item-tip { font-size:.72rem; color:#64748b; background:var(--sv-bg, #f8fafc); }
+.item-weight { font-size:.65rem; color:#94a3b8; }
+.helper-foto-status { font-size:.72rem; margin:3px 0; min-height:1rem; color:#64748b; }
+.item-options { display:flex; gap:.35rem; margin:.35rem 0; flex-wrap:wrap; }
+.item-options button {
+  padding:5px 12px; border:1.5px solid #d1d5db; border-radius:20px;
+  background:white; font-size:.72rem; cursor:pointer;
+  transition: all var(--sv-transition, .15s); color:#374151; line-height:1.3;
+}
+.item-options button:hover { border-color:var(--sv-primary-light, #14b8a6); background:#f0fdfa; }
+.item-options button.selected { color:white; border-color:transparent; }
+.item-options button.score-0.selected { background:var(--sv-success, #16a34a); }
+.item-options button.score-1.selected { background:#ca8a04; }
+.item-options button.score-2.selected { background:#ea580c; }
+.item-options button.score-3.selected { background:var(--sv-danger, #dc2626); }
+.item-options button.score-4.selected { background:#6b7280; }
+.item-options button.score-0 { border-color:#86efac; }
+.item-options button.score-1 { border-color:#fcd34d; }
+.item-options button.score-2 { border-color:#fdba74; }
+.item-options button.score-3 { border-color:#fca5a5; }
+.item-options button.score-4 { border-color:#e5e7eb; }
+.photo-wrapper { display:flex; align-items:center; gap:.4rem; margin:.3rem 0; flex-wrap:wrap; }
+.photo-wrapper input[type="file"] { font-size:.7rem; }
+.photo-wrapper .photo-preview { width:50px; height:50px; object-fit:cover; border-radius:6px; border:1px solid #e5e7eb; }
+.lightbox-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.8); z-index:9999; justify-content:center; align-items:center; cursor:pointer; }
+.lightbox-overlay.open { display:flex; }
+.lightbox-overlay img { max-width:95vw; max-height:95vh; object-fit:contain; border-radius:8px; box-shadow:0 4px 20px rgba(0,0,0,.5); }
+.lightbox-close { position:fixed; top:15px; right:20px; color:white; font-size:28px; cursor:pointer; background:rgba(0,0,0,.3); width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; z-index:10000; }
+.note-input {
+  width:100%; border:1.5px solid #e2e8f0; border-radius:var(--sv-radius-sm, 6px);
+  padding:.4rem .5rem; font-size:.75rem; resize:vertical; min-height:32px; margin-top:.25rem;
+  transition: border-color var(--sv-transition, .15s); outline:none;
+  font-family: var(--sv-font, system-ui,-apple-system,sans-serif);
+}
+.note-input:focus { border-color: var(--sv-primary-light, #14b8a6); box-shadow: 0 0 0 3px rgba(15,118,110,0.1); }
+.submit-bar {
+  position:fixed; bottom:0; left:0; right:0; background:white;
+  border-top:1px solid var(--sv-border, #e2e8f0);
+  padding:.7rem 1rem; display:flex; justify-content:space-between; align-items:center;
+  box-shadow:0 -4px 12px rgba(0,0,0,.06); z-index:200;
+}
+.submit-bar .summary-text { font-size:.75rem; color:#64748b; }
+.btn-primary {
+  background:var(--sv-primary, #0f766e); color:white; border:none;
+  padding:.6rem 1.3rem; border-radius:var(--sv-radius-md, 10px);
+  font-size:.82rem; font-weight:600; cursor:pointer;
+  transition: all var(--sv-transition, .15s); display:inline-flex; align-items:center; gap:6px;
+}
+.btn-primary:hover { background:var(--sv-primary-dark, #0d5e57); box-shadow:0 4px 12px rgba(15,118,110,.25); transform:translateY(-1px); }
+.btn-primary:disabled { opacity:.5; cursor:not-allowed; transform:none; }
+.cam-btn, .video-btn {
+  padding:5px 12px; border-radius:20px; font-size:.72rem; cursor:pointer;
+  transition: all var(--sv-transition, .15s); white-space:nowrap; display:inline-flex; align-items:center; gap:4px;
+}
+.cam-btn { border:1.5px solid #0f766e; background:#f0fdfa; color:#0f766e; }
+.cam-btn:hover { background:#ccfbf1; transform:translateY(-1px); }
+.video-btn { border:1.5px solid #7c3aed; background:#f5f3ff; color:#7c3aed; }
+.video-btn:hover { background:#ede9fe; transform:translateY(-1px); }
+.cat-progress { font-size:.7rem; color:#64748b; font-weight:400; margin-left:auto; margin-right:6px; }
+@media (max-width:480px) {
+  .top-bar { font-size:.78rem; padding:.5rem .6rem; }
+  .section-header { font-size:.82rem; padding:.5rem .7rem; }
+  .item { padding:.5rem .7rem; }
+  .item-options button { font-size:.68rem; padding:4px 10px; }
+}
+</style>
 </head>
 <body>
 
 <div class="top-bar">
   <div style="display:flex;align-items:center;gap:1rem">
-    <strong>📋 Survey Kondisi Kantor</strong>
+    <strong><i class="fas fa-clipboard-check me-1"></i> Survey Kondisi Kantor</strong>
     {% for m in menu_items %}
     <a href="{{ m.url }}" class="nav-link">{{ m.icon }} {{ m.label }}</a>
     {% endfor %}
   </div>
   <div style="display:flex;align-items:center;gap:.8rem">
-    <span style="font-size:.8rem;color:#93c5fd">👤 {{ user_name }}</span>
-    <a href="/api/logout" class="nav-link" style="color:#fca5a5">Keluar</a>
+    <span style="font-size:.8rem;color:#93c5fd"><i class="fas fa-user me-1"></i>{{ user_name }}</span>
+    <a href="/api/logout" class="nav-link" style="color:#fca5a5"><i class="fas fa-sign-out-alt me-1"></i>Keluar</a>
   </div>
 </div>
 
 <!-- Info card -->
 <div style="margin:8px 12px;background:white;border-radius:12px;padding:10px 14px;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;align-items:center;gap:12px;font-size:.8rem;flex-wrap:wrap;">
-  <span>🏢 <strong>{{ kantor_label }}</strong> ({{ kantor_code }})</span>
-  <span>👤 {{ user_name }}</span>
-  <span>📅 {{ today_str }}</span>
+  <span><i class="fas fa-building me-1"></i> <strong>{{ kantor_label }}</strong> ({{ kantor_code }})</span>
+  <span><i class="fas fa-user me-1"></i> {{ user_name }}</span>
+  <span><i class="fas fa-calendar me-1"></i> {{ today_str }}</span>
+  <span id="geo-indicator"><i class="fas fa-spinner fa-pulse"></i> <span style="font-size:.65rem;">Cari lokasi...</span></span>
 </div>
 
 <!-- Status banner -->
 {% if lock_expired %}
 <div style="margin:0 12px 8px;padding:10px 14px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;font-size:.78rem;color:#9a3412;">
-  <strong>⏰ Lock expired</strong><br>
+  <strong><i class="fas fa-clock" style="color:#ea580c"></i> Lock expired</strong><br>
   <span style="font-size:.72rem;">Draft oleh {{ existing_pic }} sudah lebih dari 30 menit tidak diupdate. Kamu bisa mengambil alih dan melanjutkan.</span>
 </div>
 {% elif conflict_mode %}
 <div style="margin:0 12px 8px;padding:10px 14px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;font-size:.78rem;color:#9a3412;">
-  <strong>🔒 Sedang digarap oleh {{ existing_pic }}</strong><br>
+  <strong><i class="fas fa-lock" style="color:#ea580c"></i> Sedang digarap oleh {{ existing_pic }}</strong><br>
   <span style="font-size:.72rem;">Kantor ini sedang dikerjakan oleh {{ existing_pic }}. Kamu bisa melihat, tapi tidak bisa mengedit.</span>
 </div>
 {% elif is_submitted %}
 <div style="margin:0 12px 8px;padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;font-size:.78rem;color:#166534;">
-  <strong>✅ Survey sudah selesai (submitted)</strong><br>
-  <span style="font-size:.72rem;">Hasil survei kantor ini sudah disubmit dan tidak bisa diubah. Hubungi admin jika perlu revisi.</span>
+  <strong><i class="fas fa-check-circle" style="color:#16a34a"></i> Survey sudah selesai (submitted)</strong><br>
+  <span style="font-size:.72rem;">Hasil survei kantor ini sudah disubmit. Data lama tetap tersimpan.</span>
+  <button onclick="reSurvey()" style="margin-top:6px;background:#16a34a;color:white;border:none;border-radius:8px;padding:5px 12px;font-size:.72rem;cursor:pointer;display:inline-flex;align-items:center;gap:4px;"><i class="fas fa-rotate me-1"></i> Perbarui Survey — isi ulang item yang sudah diperbaiki</button>
 </div>
 {% elif is_draft %}
 <div style="margin:0 12px 8px;padding:10px 14px;background:#fefce8;border:1px solid #fef08a;border-radius:10px;font-size:.78rem;color:#854d0e;">
-  <strong>✏️ Draft — melanjutkan survei</strong><br>
+  <strong><i class="fas fa-pen" style="color:#ca8a04"></i> Draft — melanjutkan survei</strong><br>
   <span style="font-size:.72rem;">Ada draft yang belum selesai. Isian yang sudah ada akan dimuat otomatis.</span>
 </div>
 {% endif %}
@@ -162,8 +254,8 @@ img.auto-scale { max-width:90vw; max-height:80vh; object-fit:contain; background
       <button type="button" class="video-del-btn" data-idx="{{ idx }}" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:none;background:#ef4444;color:white;font-size:11px;line-height:18px;text-align:center;cursor:pointer;padding:0;">✕</button>
     </div>
     <div style="display:flex;flex-direction:column;gap:4px;">
-      <button type="button" class="cam-btn" data-idx="{{ idx }}" style="padding:4px 10px;border:1px solid #2563eb;border-radius:6px;background:#eff6ff;color:#2563eb;font-size:.72rem;cursor:pointer;white-space:nowrap;">📷 Foto</button>
-      <button type="button" class="video-btn" data-idx="{{ idx }}" style="padding:4px 10px;border:1px solid #7c3aed;border-radius:6px;background:#f5f3ff;color:#7c3aed;font-size:.72rem;cursor:pointer;white-space:nowrap;">🎥 Video</button>
+      <button type="button" class="cam-btn" data-idx="{{ idx }}"><i class="fas fa-camera me-1"></i> Foto</button>
+      <button type="button" class="video-btn" data-idx="{{ idx }}"><i class="fas fa-video me-1"></i> Video</button>
     </div>
   </div>
   <div class="foto-desc" id="foto-desc-{{ idx }}" style="font-size:.65rem;color:#6b7280;margin-top:2px;display:{{ 'block' if initial_status_data and idx < initial_status_data|length and initial_status_data[idx].get('foto_desc') else 'none' }};">{{ (initial_status_data[idx].get('foto_desc','')) if initial_status_data and idx < initial_status_data|length and initial_status_data[idx].get('foto_desc') else '' }}</div>
@@ -185,9 +277,9 @@ img.auto-scale { max-width:90vw; max-height:80vh; object-fit:contain; background
   </div>
   <div style="text-align:right">
     {% if conflict_mode or is_submitted %}
-    <button class="btn-primary" disabled style="opacity:.5;cursor:not-allowed;">🔒 Read Only</button>
+    <button class="btn-primary" disabled style="opacity:.5;cursor:not-allowed;"><i class="fas fa-lock me-1"></i> Read Only</button>
     {% else %}
-    <button class="btn-primary" onclick="submitForm()" id="submit-btn">📤 Submit</button>
+    <button class="btn-primary" onclick="submitForm()" id="submit-btn"><i class="fas fa-paper-plane me-1"></i> Submit</button>
     {% endif %}
   </div>
 </div>
@@ -203,6 +295,65 @@ for (var i = 0; i < masterItems.length; i++) {
   if (!window._masterItems) window._masterItems = {};
   window._masterItems[masterItems[i].idx] = masterItems[i];
 }
+
+// ── Geo Location: ambil dari awal, refresh tiap 30 detik ──
+var currentGeo = '';
+var geoStatus = 'mencari';
+var geoDenied = false; // kalo user nolak izin, stop retry
+
+function ambilGeo() {
+  if (!navigator.geolocation) {
+    geoStatus = 'tidak-ada';
+    updateGeoIndicator();
+    return;
+  }
+  if (geoDenied) return; // user udah nolak, gausa coba lagi
+  navigator.geolocation.getCurrentPosition(
+    function(pos) {
+      var coord = pos.coords.latitude.toFixed(6) + ',' + pos.coords.longitude.toFixed(6);
+      if (coord !== currentGeo) {
+        currentGeo = coord;
+      }
+      geoStatus = 'ok';
+      updateGeoIndicator();
+    },
+    function(err) {
+      // Kode error: 1 = denied, 2 = unavailable, 3 = timeout
+      if (err.code === 1) {
+        geoDenied = true; // user nolak izin → stop retry
+        geoStatus = 'ditolak';
+      } else if (!currentGeo) {
+        geoStatus = 'gagal';
+      }
+      // Kalo udah punya geo sebelumnya, tetap pake yang lama
+      updateGeoIndicator();
+    },
+    { timeout: 10000, enableHighAccuracy: true }
+  );
+}
+
+function updateGeoIndicator() {
+  var el = document.getElementById('geo-indicator');
+  if (!el) return;
+  if (geoStatus === 'ok') {
+    el.innerHTML = '<i class="fas fa-map-marker-alt" style="color:#22c55e"></i> <span style="font-size:.65rem;">Lokasi aktif</span>';
+    el.style.color = '#22c55e';
+  } else if (geoStatus === 'mencari') {
+    el.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> <span style="font-size:.65rem;">Cari lokasi...</span>';
+    el.style.color = '#f59e0b';
+  } else if (geoStatus === 'ditolak') {
+    el.innerHTML = '<i class="fas fa-ban"></i> <span style="font-size:.65rem;">Lokasi tidak diizinkan</span>';
+    el.style.color = '#ef4444';
+  } else {
+    el.innerHTML = '<i class="fas fa-exclamation-triangle"></i> <span style="font-size:.65rem;">Lokasi tdk terdeteksi</span>';
+    el.style.color = '#f59e0b';
+  }
+}
+
+// Ambil geo pas load
+ambilGeo();
+// Refresh tiap 30 detik
+setInterval(ambilGeo, 30000);
 
 // ── Kamera langsung: getUserMedia ──
 var activeStreams = {};
@@ -236,104 +387,94 @@ function uploadFile(idx, blob) {
   formData.append('kantor_code', '{{ kantor_code }}');
   formData.append('idx', idx);
   formData.append('file', blob, 'foto_' + idx + '.jpg');
+  // Kirim geo langsung — udah siap dari awal
+  if (currentGeo) {
+    formData.append('geo', currentGeo);
+  }
 
-  // Ambil geolocation
-  function doUpload() {
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', '/survey/api/kantor-checklist/upload-foto', true);
-    xhr.withCredentials = true;
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', '/survey/api/kantor-checklist/upload-foto', true);
+  xhr.withCredentials = true;
 
-    xhr.upload.onprogress = function(e) {
-      if (e.lengthComputable) {
-        var pc = Math.round((e.loaded / e.total) * 70);
-        showProgress(idx, pc);
-        var btn = document.querySelector('.cam-btn[data-idx="' + idx + '"]');
-        if (btn) btn.textContent = '⏳ Upload ' + pc + '%';
-      }
-    };
-
-    xhr.onload = function() {
-      uploadQueue[idx] = false;
+  xhr.upload.onprogress = function(e) {
+    if (e.lengthComputable) {
+      var pc = Math.round((e.loaded / e.total) * 70);
+      showProgress(idx, pc);
       var btn = document.querySelector('.cam-btn[data-idx="' + idx + '"]');
-      if (btn) { btn.textContent = '🔍 Analisa...'; }
-      if (xhr.status === 200) {
-        try {
-          var d = JSON.parse(xhr.responseText);
-          if (d.ok) {
-            showProgress(idx, 100);
-            itemStates[idx].foto = d.foto_path;
-            autoSave(idx, 'foto', d.foto_path);
-            var preview = document.getElementById('preview-' + idx);
-            var thumbWrap = document.getElementById('thumb-wrap-' + idx);
-            if (thumbWrap) thumbWrap.style.display = 'block';
-            if (preview) { 
-              preview.src = d.foto_path + '?t=' + Date.now();
-              preview.style.display = 'block';
-            }
-            var btn = document.querySelector('.cam-btn[data-idx="' + idx + '"]');
-            if (btn) { btn.textContent = '✅ Foto OK'; btn.disabled = false; btn.style.opacity = '1'; btn.style.background = '#f0fdf4'; btn.style.borderColor = '#16a34a'; btn.style.color = '#16a34a'; }
-            // Tampilkan hasil analisa AI
-            var descEl = document.getElementById('foto-desc-' + idx);
-            if (descEl && d.foto_desc) {
-              descEl.innerHTML = d.foto_desc;
-              descEl.style.display = 'block';
-              if (d.foto_relevan === false) {
-                descEl.style.color = '#dc2626';
-                // Tampilkan saran
-                var saranEl = document.getElementById('foto-saran-' + idx);
-                if (saranEl && d.foto_saran) {
-                  saranEl.textContent = '💡 ' + d.foto_saran;
-                  saranEl.style.display = 'block';
-                }
-              } else {
-                descEl.style.color = '#6b7280';
-                var saranEl = document.getElementById('foto-saran-' + idx);
-                if (saranEl) saranEl.style.display = 'none';
-              }
-            }
-          } else {
-            showProgress(idx, 0);
-            var btn = document.querySelector('.cam-btn[data-idx="' + idx + '"]');
-            if (btn) { btn.textContent = '📷 Foto'; btn.disabled = false; btn.style.opacity = '1'; btn.style.background = '#eff6ff'; btn.style.borderColor = '#2563eb'; btn.style.color = '#2563eb'; }
-            alert('❌ Upload gagal: ' + (d.error || 'unknown'));
+      if (btn) btn.textContent = '⏳ Upload ' + pc + '%';
+    }
+  };
+
+  xhr.onload = function() {
+    uploadQueue[idx] = false;
+    var btn = document.querySelector('.cam-btn[data-idx="' + idx + '"]');
+    if (btn) { btn.textContent = '🔍 Analisa...'; }
+    if (xhr.status === 200) {
+      try {
+        var d = JSON.parse(xhr.responseText);
+        if (d.ok) {
+          showProgress(idx, 100);
+          itemStates[idx].foto = d.foto_path;
+          autoSave(idx, 'foto', d.foto_path);
+          var preview = document.getElementById('preview-' + idx);
+          var thumbWrap = document.getElementById('thumb-wrap-' + idx);
+          if (thumbWrap) thumbWrap.style.display = 'block';
+          if (preview) { 
+            preview.src = d.foto_path + '?t=' + Date.now();
+            preview.style.display = 'block';
           }
-        } catch(e) {
+          var btn = document.querySelector('.cam-btn[data-idx="' + idx + '"]');
+          if (btn) { btn.textContent = '✅ Foto OK'; btn.disabled = false; btn.style.opacity = '1'; btn.style.background = '#f0fdf4'; btn.style.borderColor = '#16a34a'; btn.style.color = '#16a34a'; }
+          // Tampilkan hasil analisa AI
+          var descEl = document.getElementById('foto-desc-' + idx);
+          if (descEl && d.foto_desc) {
+            descEl.innerHTML = d.foto_desc;
+            descEl.style.display = 'block';
+            if (d.foto_relevan === false) {
+              descEl.style.color = '#dc2626';
+              // Tampilkan saran
+              var saranEl = document.getElementById('foto-saran-' + idx);
+              if (saranEl && d.foto_saran) {
+                saranEl.textContent = '💡 ' + d.foto_saran;
+                saranEl.style.display = 'block';
+              }
+            } else {
+              descEl.style.color = '#6b7280';
+              var saranEl = document.getElementById('foto-saran-' + idx);
+              if (saranEl) saranEl.style.display = 'none';
+            }
+          }
+        } else {
           showProgress(idx, 0);
           var btn = document.querySelector('.cam-btn[data-idx="' + idx + '"]');
           if (btn) { btn.textContent = '📷 Foto'; btn.disabled = false; btn.style.opacity = '1'; btn.style.background = '#eff6ff'; btn.style.borderColor = '#2563eb'; btn.style.color = '#2563eb'; }
-          alert('❌ Upload gagal: parse error');
+          alert('❌ Upload gagal: ' + (d.error || 'unknown'));
         }
-      } else {
+      } catch(e) {
         showProgress(idx, 0);
-        uploadQueue[idx] = false;
         var btn = document.querySelector('.cam-btn[data-idx="' + idx + '"]');
         if (btn) { btn.textContent = '📷 Foto'; btn.disabled = false; btn.style.opacity = '1'; btn.style.background = '#eff6ff'; btn.style.borderColor = '#2563eb'; btn.style.color = '#2563eb'; }
-        alert('❌ Upload gagal (HTTP ' + xhr.status + ')');
+        alert('❌ Upload gagal: parse error');
       }
-    };
-
-    xhr.onerror = function() {
-      uploadQueue[idx] = false;
-      hideLoading(idx);
+    } else {
       showProgress(idx, 0);
+      uploadQueue[idx] = false;
       var btn = document.querySelector('.cam-btn[data-idx="' + idx + '"]');
       if (btn) { btn.textContent = '📷 Foto'; btn.disabled = false; btn.style.opacity = '1'; btn.style.background = '#eff6ff'; btn.style.borderColor = '#2563eb'; btn.style.color = '#2563eb'; }
-      alert('❌ Upload gagal — cek koneksi');
-    };
+      alert('❌ Upload gagal (HTTP ' + xhr.status + ')');
+    }
+  };
 
-    xhr.send(formData);
-  }
+  xhr.onerror = function() {
+    uploadQueue[idx] = false;
+    hideLoading(idx);
+    showProgress(idx, 0);
+    var btn = document.querySelector('.cam-btn[data-idx="' + idx + '"]');
+    if (btn) { btn.textContent = '📷 Foto'; btn.disabled = false; btn.style.opacity = '1'; btn.style.background = '#eff6ff'; btn.style.borderColor = '#2563eb'; btn.style.color = '#2563eb'; }
+    alert('❌ Upload gagal — cek koneksi');
+  };
 
-  if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(function(pos) {
-      formData.append('geo', pos.coords.latitude.toFixed(6) + ',' + pos.coords.longitude.toFixed(6));
-      doUpload();
-    }, function() {
-      doUpload(); // fallback — gak dapet lokasi
-    }, { timeout: 3000, enableHighAccuracy: false });
-  } else {
-    doUpload();
-  }
+  xhr.send(formData);
 }
 
 // ── Rekam Video ──
@@ -442,6 +583,10 @@ function uploadVideo(idx, blob) {
   formData.append('idx', idx);
   formData.append('file', blob, 'video_' + idx + '.webm');
   formData.append('is_video', '1');
+  // Kirim geo — udah siap dari refresh tiap 30 detik
+  if (currentGeo) {
+    formData.append('geo', currentGeo);
+  }
   
   var xhr = new XMLHttpRequest();
   xhr.open('POST', '/survey/api/kantor-checklist/upload-foto', true);
@@ -1025,6 +1170,34 @@ function closeLightbox() {
 document.addEventListener('keydown', function(e) {
   if(e.key === 'Escape') closeLightbox();
 });
+
+// ── Re-Survey: bikin survey baru untuk cabang yang sudah submitted ──
+function reSurvey() {
+  if (!confirm('Buat survey baru untuk ' + '{{ kantor_code }}' + '?\\n\\nData lama tetap tersimpan. Survey baru akan kosong, foto dan video harus diambil ulang.')) return;
+  
+  var btn = document.querySelector('button[onclick*="reSurvey"]');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Memproses...'; }
+  
+  fetch('/survey/api/kantor-checklist/re-survey/{{ kantor_code }}', {
+    method: 'POST',
+    credentials: 'include'
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (d.ok && d.redirect) {
+      window.location.href = d.redirect;
+    } else if (d.ok && d.existing_draft) {
+      window.location.href = '/survey/kantor-checklist/form/{{ kantor_code }}';
+    } else {
+      alert('❌ Gagal: ' + (d.error || 'unknown'));
+      if (btn) { btn.disabled = false; btn.textContent = '🔄 Perbarui Survey'; }
+    }
+  })
+  .catch(function(err) {
+    alert('❌ Error: ' + err.message);
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Perbarui Survey'; }
+  });
+}
 </script>
 </body>
 </html>

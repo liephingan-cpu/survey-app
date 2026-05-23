@@ -6,8 +6,9 @@
 <link rel="icon" href="data:,"><title>Survey — Pilih Kantor</title>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
-<style>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+  <link rel="stylesheet" href="/static/survey_redesign.css">
+  <style>
 body { background:#f1f5f9; font-family:system-ui; margin:0; }
 .card { max-width:640px; margin:1.5rem auto; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,.08); }
 h3 { color:#1e293b; margin-bottom:1rem; }
@@ -79,14 +80,14 @@ h3 { color:#1e293b; margin-bottom:1rem; }
 
 <div class="top-bar">
   <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
-    <strong>📋 Survey Kondisi Kantor</strong>
+    <strong><i class="fas fa-clipboard-check me-1"></i> Survey Kondisi Kantor</strong>
     {% for m in menu_items %}
     <a href="{{ m.url }}" class="nav-link">{{ m.icon }} {{ m.label }}</a>
     {% endfor %}
   </div>
   <div style="display:flex;align-items:center;gap:.8rem">
-    <span style="font-size:.8rem;color:#93c5fd">👤 {{ user_name }}</span>
-    <a href="/api/logout" class="nav-link" style="color:#fca5a5">Keluar</a>
+    <span style="font-size:.8rem;color:#93c5fd"><i class="fas fa-user me-1"></i>{{ user_name }}</span>
+    <a href="/api/logout" class="nav-link" style="color:#fca5a5"><i class="fas fa-sign-out-alt me-1"></i>Keluar</a>
   </div>
 </div>
 

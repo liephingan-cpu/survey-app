@@ -6,8 +6,11 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>📊 Rekap Survey Kondisi Kantor</title>
+<title>Rekap Survey Kondisi Kantor</title>
 <link rel="icon" href="data:,">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+<link rel="stylesheet" href="/static/survey_redesign.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
 * { box-sizing:border-box; margin:0; padding:0; }
 body { background:#f1f5f9; font-family:system-ui,-apple-system,sans-serif; min-height:100vh; }
@@ -66,117 +69,347 @@ img.auto-orient { max-height:100px;object-fit:contain;background:#f1f5f9;border-
   .item-table th, .item-table td { font-size:.6rem; padding:3px 2px; }
 }
 </style>
+<style>
+/* ── Dashboard Redesign v2 ── */
+
+/* Compact KPI Strip */
+.kpi-strip {
+  display: flex; gap: 0; margin-bottom: 10px;
+  background: var(--sv-surface, #fff);
+  border-radius: var(--sv-radius-md, 10px);
+  border: 1px solid var(--sv-border, #e2e8f0);
+  overflow: hidden; box-shadow: var(--sv-shadow-sm);
+}
+.kpi-strip .kpi-item {
+  flex: 1; padding: 10px 6px; text-align: center;
+  border-right: 1px solid var(--sv-border-light, #f1f5f9);
+  min-width: 0;
+}
+.kpi-strip .kpi-item:last-child { border-right: none; }
+.kpi-strip .kpi-num {
+  font-size: 1.4rem; font-weight: 800; line-height: 1.1;
+  color: var(--sv-text, #1e293b); letter-spacing: -0.02em;
+}
+.kpi-strip .kpi-label {
+  font-size: .6rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .5px; color: var(--sv-text-secondary, #64748b);
+  margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.kpi-strip .kpi-item.accent-green .kpi-num { color: var(--sv-success, #059669); }
+.kpi-strip .kpi-item.accent-amber .kpi-num { color: var(--sv-warning, #d97706); }
+.kpi-strip .kpi-item.accent-rose .kpi-num { color: var(--sv-danger, #dc2626); }
+.kpi-strip .kpi-item.accent-teal .kpi-num { color: var(--sv-primary-light, #14b8a6); }
+
+/* Sticky Tab Bar */
+.tab-bar-wrap {
+  position: sticky; top: 0; z-index: 50;
+  background: var(--sv-bg, #f8fafc); padding: 4px 0;
+}
+.tab-bar {
+  display: flex; gap: 4px; margin: 0;
+}
+.tab-btn {
+  flex: 1; padding: 8px 4px; text-align: center;
+  border-radius: var(--sv-radius-md, 10px);
+  border: 1.5px solid var(--sv-border, #e2e8f0);
+  background: var(--sv-surface, #fff);
+  font-size: .75rem; font-weight: 500; cursor: pointer;
+  color: var(--sv-text-secondary, #64748b);
+  transition: all var(--sv-transition, .15s);
+  white-space: nowrap; display: flex; align-items: center;
+  justify-content: center; gap: 5px;
+}
+.tab-btn:hover { border-color: var(--sv-primary-light, #14b8a6); color: var(--sv-text, #1e293b); }
+.tab-btn.active {
+  background: var(--sv-primary, #0f766e); color: white;
+  border-color: var(--sv-primary, #0f766e);
+  box-shadow: 0 2px 8px rgba(15,118,110,.2);
+}
+
+/* Ringkasan Tab */
+.ringkasan-hero {
+  background: var(--sv-surface, #fff);
+  border-radius: var(--sv-radius-lg, 14px);
+  border: 1px solid var(--sv-border, #e2e8f0);
+  padding: 16px; text-align: center;
+  box-shadow: var(--sv-shadow-sm);
+  margin-bottom: 10px;
+}
+.ringkasan-hero .hero-label {
+  font-size: .7rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .8px; color: var(--sv-text-secondary, #64748b);
+}
+.ringkasan-hero .hero-score {
+  font-size: 2.8rem; font-weight: 800; line-height: 1;
+  letter-spacing: -.03em; margin: 4px 0;
+}
+.ringkasan-hero .hero-score.green { color: var(--sv-success, #059669); }
+.ringkasan-hero .hero-score.yellow { color: var(--sv-warning, #d97706); }
+.ringkasan-hero .hero-score.red { color: var(--sv-danger, #dc2626); }
+.ringkasan-hero .hero-sub {
+  font-size: .72rem; color: var(--sv-text-muted, #94a3b8);
+}
+
+/* Zone scorecards compact */
+.zone-row {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 6px; margin-bottom: 10px;
+}
+.zone-card {
+  border-radius: var(--sv-radius-md, 10px);
+  padding: 8px 6px; text-align: center;
+  border: 1px solid;
+}
+.zone-card .zone-num { font-size: 1.3rem; font-weight: 800; line-height: 1.1; }
+.zone-card .zone-label { font-size: .6rem; font-weight: 600; text-transform: uppercase; letter-spacing: .3px; }
+.zone-card.danger { background: #fef2f2; border-color: #fecaca; color: var(--sv-danger, #dc2626); }
+.zone-card.warning { background: #fffbeb; border-color: #fde68a; color: var(--sv-warning, #d97706); }
+.zone-card.success { background: #f0fdf4; border-color: #bbf7d0; color: var(--sv-success, #059669); }
+.zone-card.neutral { background: var(--sv-bg, #f8fafc); border-color: var(--sv-border, #e2e8f0); color: var(--sv-text, #1e293b); }
+
+/* Best/Worst compact */
+.bw-row {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 8px; margin-bottom: 10px;
+}
+.bw-card {
+  border-radius: var(--sv-radius-md, 10px);
+  padding: 10px 12px;
+}
+.bw-card.best { background: #f0fdf4; border: 1px solid #bbf7d0; }
+.bw-card.worst { background: #fef2f2; border: 1px solid #fecaca; }
+.bw-card .bw-title { font-size: .7rem; font-weight: 700; margin-bottom: 4px; }
+.bw-card.best .bw-title { color: var(--sv-success, #166534); }
+.bw-card.worst .bw-title { color: var(--sv-danger, #991b1b); }
+.bw-card .bw-item { font-size: .68rem; padding: 2px 0; display: flex; justify-content: space-between; gap: 4px; }
+.bw-card.best .bw-item { color: #15803d; }
+.bw-card.worst .bw-item { color: #b91c1c; }
+.bw-card .bw-item .bw-score { font-weight: 700; white-space: nowrap; }
+
+/* Category bar chart */
+.cat-chart { margin-bottom: 10px; }
+.cat-chart-title {
+  font-size: .75rem; font-weight: 600; color: var(--sv-text, #1e293b);
+  margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
+}
+.cat-chart-list { display: flex; flex-direction: column; gap: 3px; }
+.cat-bar-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px 8px; border-radius: var(--sv-radius-sm, 6px);
+  background: var(--sv-bg, #f8fafc); font-size: .7rem;
+}
+.cat-bar-row .cat-name { width: 90px; font-weight: 500; color: var(--sv-text, #1e293b); flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-bar-row .cat-bar-track { flex: 1; height: 14px; background: var(--sv-border-light, #f1f5f9); border-radius: 7px; overflow: hidden; position: relative; }
+.cat-bar-row .cat-bar-fill { height: 100%; border-radius: 7px; transition: width .4s ease; min-width: 0; }
+.cat-bar-row .cat-bar-fill.green { background: var(--sv-success, #059669); }
+.cat-bar-row .cat-bar-fill.yellow { background: var(--sv-warning, #d97706); }
+.cat-bar-row .cat-bar-fill.orange { background: #ea580c; }
+.cat-bar-row .cat-bar-fill.red { background: var(--sv-danger, #dc2626); }
+.cat-bar-row .cat-pct { width: 40px; text-align: right; font-weight: 700; color: var(--sv-text, #1e293b); flex-shrink: 0; }
+.cat-bar-row .cat-weight { font-size: .6rem; color: var(--sv-text-muted, #94a3b8); width: 36px; text-align: right; flex-shrink: 0; }
+
+/* Treemap areas */
+.area-treemap { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px; margin-bottom: 10px; }
+.area-tile {
+  border-radius: var(--sv-radius-md, 10px);
+  padding: 10px 8px; text-align: center; cursor: pointer;
+  transition: all var(--sv-transition, .15s);
+  border: 1px solid var(--sv-border, #e2e8f0);
+  background: var(--sv-surface, #fff);
+  box-shadow: var(--sv-shadow-sm);
+}
+.area-tile:hover { transform: translateY(-2px); box-shadow: var(--sv-shadow-md); }
+.area-tile .area-name { font-size: .7rem; font-weight: 600; color: var(--sv-text, #1e293b); margin-bottom: 2px; }
+.area-tile .area-code { font-size: .58rem; color: var(--sv-text-muted, #94a3b8); }
+.area-tile .area-stat { font-size: .65rem; margin-top: 4px; display: flex; justify-content: center; gap: 6px; }
+.area-tile .area-stat .stat-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+.area-tile .area-stat .stat-dot.green { background: var(--sv-success, #059669); }
+.area-tile .area-stat .stat-dot.amber { background: var(--sv-warning, #d97706); }
+.area-tile .area-stat .stat-dot.gray { background: var(--sv-text-muted, #94a3b8); }
+.area-tile.selected { border-color: var(--sv-primary, #0f766e); box-shadow: 0 0 0 2px rgba(15,118,110,.15); }
+
+/* Ringkasan info bar */
+.ringkasan-info {
+  font-size: .65rem; color: var(--sv-text-muted, #94a3b8);
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.ringkasan-info .info-note {
+  background: var(--sv-bg, #f8fafc); padding: 2px 8px;
+  border-radius: 4px; color: var(--sv-text-secondary, #64748b);
+}
+
+@media (max-width: 600px) {
+  .kpi-strip .kpi-num { font-size: 1.1rem; }
+  .kpi-strip .kpi-item { padding: 8px 4px; }
+  .ringkasan-hero .hero-score { font-size: 2rem; }
+  .zone-row { grid-template-columns: repeat(2, 1fr); }
+  .bw-row { grid-template-columns: 1fr; }
+  .area-treemap { grid-template-columns: repeat(2, 1fr); }
+  .tab-btn { font-size: .68rem; padding: 6px 3px; }
+  .cat-bar-row .cat-name { width: 70px; }
+}
+@media (max-width: 400px) {
+  .kpi-strip { flex-wrap: wrap; }
+  .kpi-strip .kpi-item { flex: 1 1 33%; border-bottom: 1px solid var(--sv-border-light); }
+  .zone-row { grid-template-columns: 1fr 1fr; }
+}
+</style>
 </head>
 <body>
 
 <div class="top-bar">
   <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
-    <strong>📋 Survey Kondisi Kantor</strong>
+    <strong><i class="fas fa-clipboard-check me-1"></i> Survey Kondisi Kantor</strong>
     {% for m in menu_items %}
     <a href="{{ m.url }}" class="nav-link">{{ m.icon }} {{ m.label }}</a>
     {% endfor %}
   </div>
   <div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;">
     <span style="font-size:.8rem;color:#93c5fd;font-weight:500;" class="user-info">Halo, {{ user_name }} <span style="color:#94a3b8;font-size:.7rem;">| {{ user_role|default('') }}</span></span>
-    <a href="/api/logout" class="nav-link" style="color:#fca5a5">Keluar</a>
+    <a href="/api/logout" class="nav-link" style="color:#fca5a5"><i class="fas fa-sign-out-alt me-1"></i>Keluar</a>
   </div>
 </div>
 
 <div class="container">
 
-<h2>📊 Rekap Survey Kondisi Kantor</h2>
-<p class="sub">Ringkasan penilaian kelayakan outlet</p>
-
-<div class="summary-grid">
-  <div class="dash-card">
-    <h3>Total Cabang</h3>
-    <div class="num">{{ total_branches }}</div>
-    <div class="note">dari master data</div>
+<!-- ── Compact KPI Strip ── -->
+<div class="kpi-strip">
+  <div class="kpi-item accent-teal">
+    <div class="kpi-num">{{ total_branches }}</div>
+    <div class="kpi-label">Total Cabang</div>
   </div>
-  <div class="dash-card" style="border-left:4px solid #16a34a;">
-    <h3>✅ Diserahkan</h3>
-    <div class="num">{{ done_submit|default(0) }}</div>
-    <div class="note">{{ "%.0f"|format(done_submit/total_branches*100) if done_submit and total_branches>0 else 0 }}% dari total</div>
+  <div class="kpi-item accent-green">
+    <div class="kpi-num">{{ done_submit|default(0) }}</div>
+    <div class="kpi-label"><i class="fas fa-check-circle me-1"></i>Diserahkan</div>
   </div>
-  <div class="dash-card" style="border-left:4px solid #d97706;">
-    <h3>📝 Draft</h3>
-    <div class="num">{{ done_draft|default(0) }}</div>
-    <div class="note">masih dikerjakan</div>
+  <div class="kpi-item accent-amber">
+    <div class="kpi-num">{{ done_draft|default(0) }}</div>
+    <div class="kpi-label"><i class="fas fa-pen me-1"></i>Draft</div>
   </div>
-  <div class="dash-card">
-    <h3>Belum Pernah</h3>
-    <div class="num">{{ total_branches - done_main }}</div>
-    <div class="note">perlu segera diisi</div>
+  <div class="kpi-item accent-rose">
+    <div class="kpi-num">{{ total_branches - done_main }}</div>
+    <div class="kpi-label"><i class="fas fa-circle me-1"></i>Belum</div>
   </div>
-  <div class="dash-card">
-    <h3>Rata-rata Skor <span id="trend-icon" style="font-size:.9rem;">{{ trend_icon }}</span></h3>
-    <div class="num">{{ avg_main }}%</div>
-    <div class="note">{{ avg_dur }}{% if trend_icon == '📈' %} &#x2191;{% elif trend_icon == '📉' %} &#x2193;{% endif %}</div>
+  <div class="kpi-item" style="border-right:none">
+    <div class="kpi-num" style="color:{% if avg_main and avg_main|float >= 80 %}var(--sv-success){% elif avg_main and avg_main|float >= 60 %}var(--sv-warning){% else %}var(--sv-danger){% endif %}">{{ avg_main }}%</div>
+    <div class="kpi-label"><i class="fas fa-star me-1"></i>Rata&#x2D;rata</div>
   </div>
 </div>
 
-<!-- no separate best/worst strip — merged into Per Item tab -->
+<!-- ── Sticky Tab Bar ── -->
+<div class="tab-bar-wrap">
+<div class="tab-bar">
+  <div class="tab-btn active" data-tab="ringkasan"><i class="fas fa-chart-pie"></i> Ringkasan</div>
+  <div class="tab-btn" data-tab="item"><i class="fas fa-list-check"></i> Per Item</div>
+  <div class="tab-btn" data-tab="branch"><i class="fas fa-building"></i> Per Cabang</div>
+  <div class="tab-btn" data-tab="foto"><i class="fas fa-camera"></i> Foto</div>
+  <div class="tab-btn" data-tab="peta"><i class="fas fa-map-location-dot"></i> Peta</div>
+  <div class="tab-btn" data-tab="pic"><i class="fas fa-users"></i> PIC</div>
+  {% if user_id == '17012956' %}<div class="tab-btn" data-tab="session"><i class="fas fa-database"></i> Session</div>{% endif %}
+</div>
+</div>
 
-<!-- ── Feature #2: Area Summary Card (with submit/draft/belum counts) ── -->
-{% if area_summaries %}
-<div style="background:white;border-radius:10px;padding:10px;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:8px;" class="area-summary">
-  <div style="font-size:.8rem;font-weight:600;color:#0f172a;margin-bottom:6px;">📋 Ringkasan per Area</div>
+<!-- ── Tab: Ringkasan — Guided Overview ── -->
+<div class="tab-panel" id="tab-ringkasan" style="display:block">
+<div class="ringkasan-hero">
+  <div class="hero-label"><i class="fas fa-chart-line me-1"></i>Skor Tertimbang Nasional</div>
+  <div class="hero-score {{ 'green' if avg_main and avg_main|float >= 80 else 'yellow' if avg_main and avg_main|float >= 60 else 'red' }}">{{ avg_main }}%</div>
+  <div class="hero-sub">dari {{ done_submit|default(0) }} survei tersubmit • {{ total_branches }} total cabang{% if re_survey_count > 0 %} • <span style="color:#0f766e;">🔄 {{ re_survey_count }} cabang di-resurvey</span>{% endif %}</div>
+</div>
+
+<div class="zone-row">
+  <div class="zone-card danger"><div class="zone-num" id="r-zone-merah">—</div><div class="zone-label">Zona Merah &lt;60%</div></div>
+  <div class="zone-card warning"><div class="zone-num" id="r-zone-kuning">—</div><div class="zone-label">Zona Kuning 60-80%</div></div>
+  <div class="zone-card success"><div class="zone-num" id="r-zone-hijau">—</div><div class="zone-label">Zona Hijau &gt;80%</div></div>
+  <div class="zone-card neutral"><div class="zone-num" id="r-zone-rata">—</div><div class="zone-label"><i class="fas fa-calculator me-1"></i>Rata&#x2D;rata Item</div></div>
+</div>
+
+<div class="bw-row">
+  <div class="bw-card best">
+    <div class="bw-title"><i class="fas fa-trophy me-1"></i>Item Terbaik</div>
+    <div id="r-best-list"><span style="color:#94a3b8;font-size:.65rem;">Memuat...</span></div>
+  </div>
+  <div class="bw-card worst">
+    <div class="bw-title"><i class="fas fa-triangle-exclamation me-1"></i>Item Terburuk</div>
+    <div id="r-worst-list"><span style="color:#94a3b8;font-size:.65rem;">Memuat...</span></div>
+  </div>
+</div>
+
+<div class="cat-chart">
+  <div class="cat-chart-title"><i class="fas fa-chart-simple me-1"></i>Skor per Kategori (tertimbang)</div>
+  <div class="cat-chart-list" id="r-cat-chart">
+    <div style="text-align:center;padding:10px;color:var(--sv-text-muted,#94a3b8);font-size:.72rem;"><i class="fas fa-spinner fa-spin me-1"></i>Memuat data...</div>
+  </div>
+</div>
+
+<div class="area-treemap" id="r-area-treemap">
+  {% if area_summaries %}
   {% for area in area_summaries %}
-  <div style="margin:2px 0;padding:3px 0;">
-    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-      <span style="color:#64748b;font-size:.6rem;">├──</span>
-      <span style="font-size:.7rem;font-weight:600;color:#0f172a;">{{ area.area_name }} ({{ area.area_code }})</span>
-      <span style="font-size:.65rem;font-weight:700;{% if area.avg_score is not none %}{% if area.avg_score >= 80 %}color:#166534;background:#dcfce7{% elif area.avg_score >= 60 %}color:#854d0e;background:#fef9c3{% else %}color:#991b1b;background:#fee2e2{% endif %}{% else %}color:#64748b;background:#f1f5f9{% endif %};padding:1px 6px;border-radius:4px;">{{ "%.1f"|format(area.avg_score) }}{% if area.avg_score is not none %}%{% else %}—{% endif %}</span>
-      <span style="font-size:.6rem;">✅ <strong style="color:#16a34a;">{{ area.submitted }}</strong> <span style="color:#64748b;">kirim</span></span>
-      {% if area.draft > 0 %}<span style="font-size:.6rem;">📝 <strong style="color:#ca8a04;">{{ area.draft }}</strong> <span style="color:#64748b;">isi</span></span>{% endif %}
-      {% if area.belum > 0 %}<span style="font-size:.6rem;color:#a0aec0;">⬜ <strong>{{ area.belum }}</strong> <span style="color:#a0aec0;">belum</span></span>{% endif %}
-      {% if area.total %}<span style="font-size:.6rem;color:#94a3b8;">({{ area.total }})</span>{% endif %}
-      {% if area.submitted == area.total %}<span>✅</span>{% endif %}
+  <div class="area-tile" onclick="switchTab('branch')">
+    <div class="area-name">{{ area.area_name }}</div>
+    <div class="area-code">{{ area.area_code }}</div>
+    <div class="area-stat">
+      <span><span class="stat-dot green"></span> {{ area.submitted }}</span>
+      {% if area.draft > 0 %}<span><span class="stat-dot amber"></span> {{ area.draft }}</span>{% endif %}
+      {% set belum_area = area.total - area.submitted - area.draft %}
+      {% if belum_area > 0 %}<span><span class="stat-dot gray"></span> {{ belum_area }}</span>{% endif %}
     </div>
-    {% for wil in area.wilayahs %}
-    <div style="display:flex;align-items:center;gap:6px;margin-left:20px;flex-wrap:wrap;">
-      <span style="color:#cbd5e1;font-size:.6rem;">├──</span>
-      <span style="font-size:.65rem;color:#475569;">{{ wil.wilayah_name }} ({{ wil.wilayah_code }})</span>
-      <span style="font-size:.6rem;font-weight:600;{% if wil.avg_score is not none %}{% if wil.avg_score >= 80 %}color:#166534{% elif wil.avg_score >= 60 %}color:#854d0e{% else %}color:#991b1b{% endif %}{% else %}color:#64748b{% endif %};">{{ "%.1f"|format(wil.avg_score) }}{% if wil.avg_score is not none %}%{% else %}—{% endif %}</span>
-      <span style="font-size:.55rem;">✅ <strong style="color:#16a34a;">{{ wil.submitted }}</strong></span>
-      {% if wil.draft > 0 %}<span style="font-size:.55rem;color:#ca8a04;">📝 {{ wil.draft }}</span>{% endif %}
-      {% set wil_belum = wil.total - wil.submitted - wil.draft %}
-      {% if wil_belum > 0 %}<span style="font-size:.55rem;color:#a0aec0;">⬜ {{ wil_belum }}</span>{% endif %}
-      <span style="font-size:.55rem;color:#94a3b8;">({{ wil.total }})</span>
-    </div>
-    {% endfor %}
   </div>
   {% endfor %}
+  {% else %}
+  <div style="text-align:center;padding:10px;color:var(--sv-text-muted,#94a3b8);font-size:.7rem;">Belum ada data area</div>
+  {% endif %}
 </div>
-{% endif %}
 
-<!-- ── Feature #3: PIC Activity Card (replaces Findings) ── -->
-{% if pic_activities %}
-<div style="background:white;border-radius:10px;padding:10px;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:8px;" class="pic-activity-card">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-    <div style="font-size:.8rem;font-weight:600;color:#0f172a;">👥 Aktivitas Surveyor</div>
-    <span style="font-size:.6rem;color:#94a3b8;">{{ pic_activities|length }} PIC</span>
+<div class="ringkasan-info">
+  <span><i class="fas fa-info-circle me-1"></i>Data analisa hanya mencakup survei dengan status submitted</span>
+  <span class="info-note"><i class="fas fa-clock me-1"></i><span id="r-timestamp">Memuat...</span></span>
+</div>
+
+<!-- ── Toggle: Laporan Gambar ── -->
+<div style="margin-bottom:6px;">
+  <div onclick="toggleReport()" style="cursor:pointer;display:flex;align-items:center;gap:6px;padding:8px 10px;background:var(--sv-surface,#fff);border:1px solid var(--sv-border,#e2e8f0);border-radius:var(--sv-radius-md,10px);font-size:.75rem;font-weight:600;color:var(--sv-text,#1e293b);transition:all var(--sv-transition,.15s);user-select:none;">
+    <i class="fas fa-image me-1" style="color:var(--sv-primary,#0f766e);"></i> Laporan Progress (Gambar)
+    <i class="fas fa-chevron-down report-toggle-icon" style="margin-left:auto;font-size:.65rem;color:var(--sv-text-muted,#94a3b8);"></i>
   </div>
-  <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;font-size:.7rem;">
-    <div style="padding:4px 6px;">🟢 Sedang isi: <strong style="color:#16a34a;">{{ active_pic_count }}</strong> orang</div>
-    <div style="padding:4px 6px;">📋 Draft: <strong style="color:#ca8a04;">{{ draft_count }}</strong> survei</div>
-    <div style="padding:4px 6px;">✅ Selesai hari ini: <strong style="color:#16a34a;">{{ today_submit_count }}</strong> survei</div>
-    <div style="padding:4px 6px;">👤 Total surveyor: <strong style="color:#0f172a;">{{ total_pic }}</strong> orang</div>
+  <div id="r-report-content" style="display:none;margin-top:6px;">
+    <div style="background:var(--sv-surface,#fff);border-radius:var(--sv-radius-md,10px);border:1px solid var(--sv-border,#e2e8f0);padding:10px;box-shadow:var(--sv-shadow-sm);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <div style="font-size:.72rem;color:var(--sv-text-secondary,#64748b);">Kondisi terakhir: <span id="r-report-ts">{{ last_report_update }}</span></div>
+        <button onclick="refreshReports()" style="background:var(--sv-primary,#0f766e);color:white;border:none;border-radius:6px;padding:5px 10px;font-size:.68rem;cursor:pointer;display:inline-flex;align-items:center;gap:4px;"><i class="fas fa-rotate me-1"></i>Refresh</button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        <div style="flex:1;min-width:200px;">
+          <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;">
+            <span style="font-size:.65rem;font-weight:600;color:var(--sv-success);"><i class="fas fa-check-circle me-1"></i>Diserahkan ({{ done_submit }} kantor)</span>
+            <button onclick="shareImage('/survey/reports/submitted_report.png', '✅ Laporan Diserahkan')" style="margin-left:auto;background:var(--sv-primary,#0f766e);color:white;border:none;border-radius:5px;padding:2px 7px;font-size:.6rem;cursor:pointer;display:inline-flex;align-items:center;gap:3px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.12);"><i class="fas fa-share-nodes me-1"></i>Share</button>
+          </div>
+          <a href="/survey/reports/submitted_report.png" target="_blank"><img src="/survey/reports/submitted_report.png" style="width:100%;max-width:500px;max-height:180px;object-fit:cover;border-radius:6px;border:1px solid var(--sv-border,#e2e8f0);cursor:pointer;" onclick="event.preventDefault();openLightbox(this.src)" onerror="this.parentElement.innerHTML='<span style=color:var(--sv-text-muted,#94a3b8);font-size:.65rem;>Klik Refresh untuk generate</span>'"></a>
+        </div>
+        <div style="flex:1;min-width:200px;">
+          <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;">
+            <span style="font-size:.65rem;font-weight:600;color:var(--sv-warning);"><i class="fas fa-pen me-1"></i>Draft / On Progress ({{ done_draft }} kantor)</span>
+            <button onclick="shareImage('/survey/reports/ongoing_report.png', '🟡 Laporan Draft')" style="margin-left:auto;background:var(--sv-primary,#0f766e);color:white;border:none;border-radius:5px;padding:2px 7px;font-size:.6rem;cursor:pointer;display:inline-flex;align-items:center;gap:3px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.12);"><i class="fas fa-share-nodes me-1"></i>Share</button>
+          </div>
+          <a href="/survey/reports/ongoing_report.png" target="_blank"><img src="/survey/reports/ongoing_report.png" style="width:100%;max-width:500px;max-height:180px;object-fit:cover;border-radius:6px;border:1px solid var(--sv-border,#e2e8f0);cursor:pointer;" onclick="event.preventDefault();openLightbox(this.src)" onerror="this.parentElement.innerHTML='<span style=color:var(--sv-text-muted,#94a3b8);font-size:.65rem;>Klik Refresh untuk generate</span>'"></a>
+        </div>
+        <div style="flex:1;min-width:200px;">
+          <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;">
+            <span style="font-size:.65rem;font-weight:600;color:var(--sv-text-muted,#94a3b8);"><i class="far fa-circle me-1"></i>Belum Dibuat ({{ total_branches - done_submit - done_draft }} kantor)</span>
+            <button onclick="shareImage('/survey/reports/belum_dibuat_report.png', '⬜ Laporan Belum Dibuat')" style="margin-left:auto;background:var(--sv-primary,#0f766e);color:white;border:none;border-radius:5px;padding:2px 7px;font-size:.6rem;cursor:pointer;display:inline-flex;align-items:center;gap:3px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.12);"><i class="fas fa-share-nodes me-1"></i>Share</button>
+          </div>
+          <a href="/survey/reports/belum_dibuat_report.png" target="_blank"><img src="/survey/reports/belum_dibuat_report.png" style="width:100%;max-width:500px;max-height:180px;object-fit:cover;border-radius:6px;border:1px solid var(--sv-border,#e2e8f0);cursor:pointer;" onclick="event.preventDefault();openLightbox(this.src)" onerror="this.parentElement.innerHTML='<span style=color:var(--sv-text-muted,#94a3b8);font-size:.65rem;>Klik Refresh untuk generate</span>'"></a>
+        </div>
+      </div>
+      <div style="margin-top:6px;font-size:.58rem;color:var(--sv-text-muted,#94a3b8);"><i class="fas fa-info-circle me-1"></i>Klik gambar untuk lihat besar. Laporan statis — klik Refresh untuk update data.</div>
+    </div>
   </div>
 </div>
-{% endif %}
-
-<div class="tab-bar">
-  <div class="tab-btn active" data-tab="item">Per Item</div>
-  <div class="tab-btn" data-tab="branch">Per Cabang</div>
-  <div class="tab-btn" data-tab="foto">📸 Dokumentasi</div>
-  <div class="tab-btn" data-tab="progress">📈 Progress</div>
-  <div class="tab-btn" data-tab="pic">👥 PIC</div>
-  {% if user_id == '17012956' %}<div class="tab-btn" data-tab="session">Semua Session</div>{% endif %}
 </div>
 
 <!-- Tab: Per Item — Filterable by Area/Wilayah + Best/Worst -->
-<div class="tab-panel" id="tab-item">
+<div class="tab-panel" id="tab-item" style="display:none">
 <script id="item-kantors-json" type="application/json">{{ item_kantors_json|safe }}</script>
 
 <style>
@@ -198,8 +431,8 @@ img.auto-orient { max-height:100px;object-fit:contain;background:#f1f5f9;border-
     <option value="">📍 Semua Wilayah</option>
   </select>
   <!-- Export buttons -->
-  <button onclick="exportExcel()" title="Export Excel" style="padding:3px 10px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:white;border:none;border-radius:8px;font-size:.7rem;cursor:pointer;font-weight:500;">📥 Excel</button>
-  <button onclick="exportPDF()" title="Export PDF" style="padding:3px 10px;background:linear-gradient(135deg,#3b82f6,#2563eb);color:white;border:none;border-radius:8px;font-size:.7rem;cursor:pointer;font-weight:500;">📄 PDF</button>
+  <button onclick="exportExcel()" title="Export Excel" style="padding:3px 10px;background:var(--sv-primary,#0f766e);color:white;border:none;border-radius:6px;font-size:.7rem;cursor:pointer;font-weight:500;display:inline-flex;align-items:center;gap:4px;"><i class="fas fa-file-excel me-1"></i>Excel</button>
+  <button onclick="exportPDF()" title="Export PDF" style="padding:3px 10px;background:var(--sv-primary-dark,#0d5e57);color:white;border:none;border-radius:6px;font-size:.7rem;cursor:pointer;font-weight:500;display:inline-flex;align-items:center;gap:4px;"><i class="fas fa-file-pdf me-1"></i>PDF</button>
   <span style="font-size:.68rem;color:#64748b;padding:5px 0;" id="item-stats-label">📊 Analisa Per Item</span>
   <span style="font-size:.6rem;color:#94a3b8;padding:5px 0;" id="item-stats-ts"></span>
   <span id="item-stats-status-info" style="display:none;font-size:.6rem;color:#94a3b8;padding:2px 6px;background:#f8fafc;border-radius:4px;margin-left:4px;">ⓘ</span>
@@ -524,6 +757,48 @@ function renderItemStats(d) {
 
   // Table
   renderItemTable(d);
+
+  // ── Populate Ringkasan Tab ──
+  const _gid = (id) => document.getElementById(id);
+  // Zone cards
+  const zMerah = _gid('r-zone-merah'); if(zMerah) zMerah.textContent = d.merah || 0;
+  const zKuning = _gid('r-zone-kuning'); if(zKuning) zKuning.textContent = d.kuning || 0;
+  const zHijau = _gid('r-zone-hijau'); if(zHijau) zHijau.textContent = d.hijau || 0;
+  const zRata = _gid('r-zone-rata'); if(zRata && d.rata_all) zRata.textContent = d.rata_all + '%';
+  // Timestamp
+  const ts = _gid('r-timestamp'); if(ts && d.last_update) ts.textContent = d.last_update;
+  // Best/worst
+  const rBest = _gid('r-best-list');
+  if(rBest && d.best_items && d.best_items.length > 0) {
+    rBest.innerHTML = d.best_items.slice(0,5).map(it =>
+      `<div class="bw-item"><span>${it.label.slice(0,40)}</span><span class="bw-score">${it.avg_score}%</span></div>`
+    ).join('');
+  } else if(rBest) { rBest.innerHTML = '<span style="color:#94a3b8;font-size:.65rem;">Belum ada data</span>'; }
+  const rWorst = _gid('r-worst-list');
+  if(rWorst && d.worst_items && d.worst_items.length > 0) {
+    rWorst.innerHTML = d.worst_items.slice(0,5).map(it =>
+      `<div class="bw-item"><span>${it.label.slice(0,40)}</span><span class="bw-score">${it.avg_score}%</span></div>`
+    ).join('');
+  } else if(rWorst) { rWorst.innerHTML = '<span style="color:#94a3b8;font-size:.65rem;">Belum ada data</span>'; }
+  // Category bar chart
+  const catChart = _gid('r-cat-chart');
+  if(catChart && d.cat_summary) {
+    let html = '';
+    const keys = Object.keys(d.cat_summary).sort();
+    keys.forEach(cc => {
+      const c = d.cat_summary[cc];
+      const s = c.avg_score || 0;
+      const cls = s >= 80 ? 'green' : s >= 60 ? 'yellow' : s >= 40 ? 'orange' : 'red';
+      const pct = s > 0 ? s.toFixed(1) : 0;
+      html += `<div class="cat-bar-row">
+        <span class="cat-name" title="${c.name || cc}">${(c.name || cc).slice(0,15)}</span>
+        <div class="cat-bar-track"><div class="cat-bar-fill ${cls}" style="width:${pct}%"></div></div>
+        <span class="cat-pct">${pct}%</span>
+        <span class="cat-weight">${c.weight}%</span>
+      </div>`;
+    });
+    catChart.innerHTML = html;
+  }
 }
 
 // ── Item Table Sort + Search + Accordion ──
@@ -816,6 +1091,36 @@ setTimeout(function(){
 
 <!-- Tab: Per Cabang -->
 <div class="tab-panel" id="tab-branch" style="display:none">
+{% if area_summaries %}
+<div class="card" style="padding:10px;margin-bottom:8px;">
+  <div class="card-title" style="font-size:.8rem;margin-bottom:8px;"><i class="fas fa-map me-1"></i>Ringkasan per Area</div>
+  {% for area in area_summaries %}
+  <div style="margin:2px 0;padding:4px 6px;border-radius:6px;background:var(--sv-bg);">
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+      <span style="font-size:.72rem;font-weight:600;color:var(--sv-text);">{{ area.area_name }} ({{ area.area_code }})</span>
+      <span class="badge {{ 'badge-complete' if area.avg_score and area.avg_score >= 80 else 'badge-draft' if area.avg_score and area.avg_score >= 60 else 'badge-error' }}">{% if area.avg_score is not none %}{{ "%.1f"|format(area.avg_score) }}%{% else %}—{% endif %}</span>
+      <span style="font-size:.62rem;"><i class="fas fa-check-circle" style="color:var(--sv-success);font-size:.55rem;"></i> <strong style="color:var(--sv-success);font-size:.62rem;">{{ area.submitted }}</strong> <span style="color:var(--sv-text-muted);">kirim</span></span>
+      {% if area.draft > 0 %}<span style="font-size:.62rem;"><i class="fas fa-pen" style="color:var(--sv-warning);font-size:.55rem;"></i> <strong style="color:var(--sv-warning);font-size:.62rem;">{{ area.draft }}</strong> <span style="color:var(--sv-text-muted);">draft</span></span>{% endif %}
+      {% set wil_belum = area.total - area.submitted - area.draft %}
+      {% if wil_belum > 0 %}<span style="font-size:.62rem;"><i class="far fa-circle" style="color:var(--sv-text-muted);font-size:.55rem;"></i> <strong style="color:var(--sv-text-muted);font-size:.62rem;">{{ wil_belum }}</strong> <span style="color:var(--sv-text-muted);">belum</span></span>{% endif %}
+      <span style="font-size:.6rem;color:var(--sv-text-muted);">({{ area.total }})</span>
+    </div>
+    {% for wil in area.wilayahs %}
+    <div style="display:flex;align-items:center;gap:6px;margin-left:16px;flex-wrap:wrap;">
+      <span style="font-size:.6rem;color:var(--sv-text-muted);">&#x2514;</span>
+      <span style="font-size:.65rem;color:var(--sv-text-secondary);">{{ wil.wilayah_name }} ({{ wil.wilayah_code }})</span>
+      <span style="font-size:.62rem;font-weight:600;{% if wil.avg_score is not none %}{% if wil.avg_score >= 80 %}color:var(--sv-success){% elif wil.avg_score >= 60 %}color:var(--sv-warning){% else %}color:var(--sv-danger){% endif %}{% else %}color:var(--sv-text-muted){% endif %};">{% if wil.avg_score is not none %}{{ "%.1f"|format(wil.avg_score) }}%{% else %}—{% endif %}</span>
+      <span style="font-size:.58rem;"><i class="fas fa-check-circle" style="color:var(--sv-success);font-size:.5rem;"></i> <strong style="color:var(--sv-success);font-size:.58rem;">{{ wil.submitted }}</strong></span>
+      {% if wil.draft > 0 %}<span style="font-size:.58rem;color:var(--sv-warning);"><i class="fas fa-pen" style="font-size:.5rem;"></i> {{ wil.draft }}</span>{% endif %}
+      {% set wil_belum2 = wil.total - wil.submitted - wil.draft %}
+      {% if wil_belum2 > 0 %}<span style="font-size:.58rem;color:var(--sv-text-muted);"><i class="far fa-circle" style="font-size:.5rem;"></i> {{ wil_belum2 }}</span>{% endif %}
+      <span style="font-size:.55rem;color:var(--sv-text-muted);">({{ wil.total }})</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
 <style>
 .filter-select {
   padding:4px 8px; border:1.5px solid #e2e8f0; border-radius:6px;
@@ -952,6 +1257,57 @@ setTimeout(function(){
     </div>
   </div>
   <div style="margin-top:8px;font-size:.6rem;color:#94a3b8;">📌 Klik gambar untuk lihat besar. Laporan statis — refresh manual untuk update.</div>
+</div>
+</div>
+
+<!-- ── Tab: Peta (Geo Location) ── -->
+<div class="tab-panel" id="tab-peta" style="display:none">
+<div style="background:white;border-radius:10px;padding:10px;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:8px;">
+  <!-- Header + Search -->
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+    <div style="font-size:.85rem;font-weight:600;color:#0f172a;"><i class="fas fa-map-location-dot me-1" style="color:var(--sv-primary,#0f766e);"></i>Peta Sebaran Survey</div>
+    <input id="map-search" placeholder="🔍 Cari kode / nama kantor..." style="flex:1;min-width:100px;padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:.7rem;background:white;color:#334155;outline:none;transition:border-color .15s;" onfocus="this.style.borderColor='var(--sv-primary,#0f766e)'" onblur="this.style.borderColor='#e2e8f0'" oninput="searchMapOffice(this.value)">
+    <button onclick="resetMapView()" title="Reset peta" style="background:#f8fafc;color:#64748b;border:1.5px solid #e2e8f0;border-radius:6px;width:28px;height:28px;font-size:.7rem;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="fas fa-crosshairs"></i></button>
+    <button onclick="loadMapData()" style="background:var(--sv-primary,#0f766e);color:white;border:none;border-radius:6px;padding:4px 10px;font-size:.68rem;cursor:pointer;display:inline-flex;align-items:center;gap:4px;"><i class="fas fa-rotate me-1"></i></button>
+  </div>
+  <!-- Filter pills -->
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+    <span id="peta-info" style="font-size:.65rem;color:#64748b;line-height:28px;">Memuat data...</span>
+    <span style="flex:1"></span>
+    <button class="map-filter-pill" data-filter="submitted" onclick="toggleMapFilter('submitted')" style="padding:3px 10px;border-radius:12px;border:1.5px solid #22c55e;background:#f0fdf4;color:#16a34a;font-size:.65rem;cursor:pointer;transition:all .15s;">
+      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#22c55e;margin-right:4px;vertical-align:middle;"></span>Submitted <span class="filter-count" style="opacity:.6;">0</span>
+    </button>
+    <button class="map-filter-pill" data-filter="draft" onclick="toggleMapFilter('draft')" style="padding:3px 10px;border-radius:12px;border:1.5px solid #eab308;background:#fefce8;color:#a16207;font-size:.65rem;cursor:pointer;transition:all .15s;">
+      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#eab308;margin-right:4px;vertical-align:middle;"></span>Draft <span class="filter-count" style="opacity:.6;">0</span>
+    </button>
+    <button class="map-filter-pill" data-filter="belum" onclick="toggleMapFilter('belum')" style="padding:3px 10px;border-radius:12px;border:1.5px solid #ef4444;background:#fef2f2;color:#dc2626;font-size:.65rem;cursor:pointer;transition:all .15s;">
+      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef4444;margin-right:4px;vertical-align:middle;"></span>Belum <span class="filter-count" style="opacity:.6;">0</span>
+    </button>
+    <button class="map-filter-pill" data-filter="all" onclick="toggleMapFilter('all')" style="padding:3px 10px;border-radius:12px;border:1.5px solid #94a3b8;background:#f8fafc;color:#64748b;font-size:.65rem;cursor:pointer;transition:all .15s;font-weight:600;">
+      Semua
+    </button>
+  </div>
+  <!-- Map container -->
+  <div id="map-container" style="height:380px;border-radius:8px;border:1px solid var(--sv-border,#e2e8f0);margin-bottom:6px;"></div>
+  <!-- Interactive Legend -->
+  <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:.6rem;color:#64748b;align-items:center;padding:4px 0;">
+    <span style="color:#94a3b8;font-weight:500;">Legenda:</span>
+    <span class="legend-item" data-legend="submitted" style="cursor:pointer;display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:4px;transition:background .15s;" title="Klik untuk filter">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e;"></span>Diserahkan
+    </span>
+    <span class="legend-item" data-legend="draft" style="cursor:pointer;display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:4px;transition:background .15s;" title="Klik untuk filter">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#eab308;"></span>Draft
+    </span>
+    <span class="legend-item" data-legend="belum" style="cursor:pointer;display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:4px;transition:background .15s;" title="Klik untuk filter">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ef4444;"></span>Belum
+    </span>
+    <span style="display:inline-flex;align-items:center;gap:3px;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#a855f7;"></span>Ada GPS
+    </span>
+    <span id="peta-search-result" style="margin-left:auto;font-size:.62rem;color:#0f766e;font-weight:500;"></span>
+  </div>
+  <!-- Stats -->
+  <div id="peta-stats" style="margin-top:4px;display:flex;gap:8px;flex-wrap:wrap;font-size:.65rem;"></div>
 </div>
 </div>
 
@@ -1405,12 +1761,23 @@ function shareImage(url, title) {
   var btn = event.target;
   if(btn.disabled) return;
   if(!navigator.share) {
-    btn.innerHTML = '❌ Browser gak support';
-    setTimeout(function(){ btn.innerHTML = '📤 Share'; }, 2000);
+    // Fallback: copy URL ke clipboard
+    var textarea = document.createElement('textarea');
+    textarea.value = window.location.origin + url;
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      document.execCommand('copy');
+      btn.innerHTML = '<i class=\"fas fa-check\"></i> Tersalin';
+    } catch(e) {
+      btn.innerHTML = '<i class=\"fas fa-exclamation\"></i> Gagal';
+    }
+    document.body.removeChild(textarea);
+    setTimeout(function(){ btn.disabled = false; btn.innerHTML = '<i class=\"fas fa-share-nodes\"></i> Share'; }, 2000);
     return;
   }
   btn.disabled = true;
-  btn.innerHTML = '⏳...';
+  btn.innerHTML = '<i class=\"fas fa-spinner fa-spin\"></i>';
   // Catat log dulu
   var type = url.includes('submitted') ? 'submitted' : url.includes('ongoing') ? 'ongoing' : 'belum';
   fetch('/survey/api/log-share', {
@@ -1427,11 +1794,11 @@ function shareImage(url, title) {
       files: [file]
     });
   }).then(function(){
-    btn.innerHTML = '✅ Shared';
-    setTimeout(function(){ btn.disabled = false; btn.innerHTML = '📤 Share'; }, 2000);
+    btn.innerHTML = '<i class=\"fas fa-check\"></i> Terkirim';
+    setTimeout(function(){ btn.disabled = false; btn.innerHTML = '<i class=\"fas fa-share-nodes\"></i> Share'; }, 2000);
   }).catch(function(e){
     if(e.name !== 'AbortError') console.error(e);
-    btn.innerHTML = '📤 Share';
+    btn.innerHTML = '<i class=\"fas fa-share-nodes\"></i> Share';
     btn.disabled = false;
   });
 }
@@ -1450,7 +1817,13 @@ function refreshReports() {
         var src = img.getAttribute('src').split('?')[0];
         img.src = src + '?t=' + ts;
       });
+      document.querySelectorAll('#r-report-content img').forEach(function(img){
+        var src = img.getAttribute('src').split('?')[0];
+        img.src = src + '?t=' + ts;
+      });
       document.getElementById('report-ts').textContent = new Date().toLocaleString('id-ID', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) + ' WIB';
+      var rTs = document.getElementById('r-report-ts');
+      if(rTs) rTs.textContent = new Date().toLocaleString('id-ID', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) + ' WIB';
       btn.innerHTML = '✅ Berhasil!';
     } else {
       btn.innerHTML = '❌ Gagal';
@@ -1460,6 +1833,27 @@ function refreshReports() {
     btn.innerHTML = '❌ Error';
     setTimeout(function(){ btn.disabled = false; btn.innerHTML = '🔄 Refresh'; }, 2000);
   });
+}
+
+// ── Toggle Laporan Gambar ──
+function toggleReport() {
+  var x = document.getElementById('r-report-content');
+  var i = document.querySelector('.report-toggle-icon');
+  if (!x || !i) return;
+  if (x.style.display === 'none' || !x.style.display) {
+    x.style.display = 'block';
+    i.className = 'fas fa-chevron-up report-toggle-icon';
+    // Auto-refresh kalo laporan belum ada
+    var imgs = x.querySelectorAll('img');
+    var needsRefresh = false;
+    imgs.forEach(function(img){
+      if (!img.src || img.src.includes('undefined')) needsRefresh = true;
+    });
+    if (needsRefresh) refreshReports();
+  } else {
+    x.style.display = 'none';
+    i.className = 'fas fa-chevron-down report-toggle-icon';
+  }
 }
 
 // Tab switching (minimal, server-reliable)
@@ -1602,6 +1996,261 @@ document.addEventListener('keydown', function(e) {
     closeLightbox();
     closeEvidenceModal();
   }
+});
+</script>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ── Peta Tab ──
+var _map = null;
+var _mapMarkers = [];
+var _mapMarkerData = []; // {marker, branch, status}
+var _activeFilters = { submitted: true, draft: true, belum: true };
+var _searchMarker = null; // marker highlight untuk hasil search
+
+function initMap() {
+  if (_map) return;
+  _map = L.map('map-container').setView([-2.5, 118.0], 5);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+    maxZoom: 18,
+  }).addTo(_map);
+  setTimeout(function(){ _map.invalidateSize(); }, 200);
+}
+
+function applyFilters() {
+  var shown = 0;
+  _mapMarkerData.forEach(function(d) {
+    var show = _activeFilters[d.status];
+    if (show) {
+      if (!_map.hasLayer(d.marker)) d.marker.addTo(_map);
+      shown++;
+    } else {
+      if (_map.hasLayer(d.marker)) _map.removeLayer(d.marker);
+    }
+  });
+  // Update filter pill styles
+  document.querySelectorAll('.map-filter-pill').forEach(function(pill) {
+    var f = pill.getAttribute('data-filter');
+    if (f === 'all') {
+      var allActive = _activeFilters.submitted && _activeFilters.draft && _activeFilters.belum;
+      pill.style.borderColor = allActive ? '#0f766e' : '#94a3b8';
+      pill.style.background = allActive ? '#f0fdfa' : '#f8fafc';
+      pill.style.color = allActive ? '#0f766e' : '#64748b';
+    } else {
+      var active = _activeFilters[f];
+      pill.style.opacity = active ? '1' : '.4';
+    }
+  });
+  // Update legend item styles
+  document.querySelectorAll('.legend-item').forEach(function(item) {
+    var l = item.getAttribute('data-legend');
+    var active = _activeFilters[l];
+    item.style.background = active ? 'rgba(0,0,0,0.04)' : 'transparent';
+    item.style.fontWeight = active ? '600' : '400';
+  });
+  document.getElementById('peta-info').textContent = shown + ' / ' + _mapMarkerData.length + ' cabang ditampilkan';
+}
+
+function toggleMapFilter(filter) {
+  if (filter === 'all') {
+    _activeFilters.submitted = true;
+    _activeFilters.draft = true;
+    _activeFilters.belum = true;
+  } else {
+    _activeFilters[filter] = !_activeFilters[filter];
+    // Kalo semua mati, hidupkan yang di-click
+    if (!_activeFilters.submitted && !_activeFilters.draft && !_activeFilters.belum) {
+      _activeFilters[filter] = true;
+    }
+  }
+  applyFilters();
+}
+
+function searchMapOffice(query) {
+  var resultEl = document.getElementById('peta-search-result');
+  query = query.trim().toLowerCase();
+  
+  // Remove previous highlight
+  if (_searchMarker) { _map.removeLayer(_searchMarker); _searchMarker = null; }
+  
+  if (!query || query.length < 2) {
+    resultEl.textContent = '';
+    return;
+  }
+  
+  // Cari di semua data
+  var matches = [];
+  _mapMarkerData.forEach(function(d) {
+    var kode = (d.branch.kode || '').toLowerCase();
+    var nama = (d.branch.nama || '').toLowerCase();
+    if (kode.indexOf(query) !== -1 || nama.indexOf(query) !== -1) {
+      matches.push(d);
+    }
+  });
+  
+  if (matches.length === 0) {
+    resultEl.textContent = '❌ Tidak ditemukan';
+    return;
+  }
+  
+  if (matches.length === 1) {
+    var d = matches[0];
+    resultEl.textContent = '📍 ' + d.branch.kode + ' — ' + d.branch.nama;
+    // Zoom ke marker
+    _map.setView(d.marker.getLatLng(), 15, { animate: true });
+    // Highlight dengan lingkaran
+    _searchMarker = L.circleMarker(d.marker.getLatLng(), {
+      radius: 22, color: '#0f766e', fillColor: 'rgba(15,118,110,0.15)',
+      weight: 2, fillOpacity: 0.3
+    }).addTo(_map);
+    // Buka popup
+    d.marker.openPopup();
+  } else {
+    resultEl.textContent = '📍 ' + matches.length + ' hasil ditemukan';
+    // Zoom ke semua hasil
+    var group = L.featureGroup(matches.map(function(m) { return m.marker; }));
+    _map.fitBounds(group.getBounds().pad(0.3), { animate: true });
+  }
+}
+
+function resetMapView() {
+  document.getElementById('map-search').value = '';
+  document.getElementById('peta-search-result').textContent = '';
+  if (_searchMarker) { _map.removeLayer(_searchMarker); _searchMarker = null; }
+  if (_mapMarkers.length > 0) {
+    var group = L.featureGroup(_mapMarkers);
+    _map.fitBounds(group.getBounds().pad(0.1), { animate: true });
+  } else {
+    _map.setView([-2.5, 118.0], 5);
+  }
+}
+
+function loadMapData() {
+  var info = document.getElementById('peta-info');
+  var stats = document.getElementById('peta-stats');
+  info.textContent = 'Memuat data...';
+
+  fetch('/survey/api/geo-data')
+    .then(r => r.json())
+    .then(data => {
+      if (!data.ok) { info.textContent = '❌ ' + (data.error || 'Gagal'); return; }
+
+      initMap();
+
+      // Clear old markers
+      _mapMarkers.forEach(m => _map.removeLayer(m));
+      _mapMarkers = [];
+      _mapMarkerData = [];
+      if (_searchMarker) { _map.removeLayer(_searchMarker); _searchMarker = null; }
+
+      // Stats counters
+      var statsCount = { submitted: 0, draft: 0, belum: 0, withGeo: 0, withoutGeo: 0 };
+      var filterCounts = { submitted: 0, draft: 0, belum: 0 };
+
+      data.branches.forEach(function(b) {
+        var s = b.status || '';
+        if (s === 'submitted') { statsCount.submitted++; filterCounts.submitted++; }
+        else if (s === 'draft') { statsCount.draft++; filterCounts.draft++; }
+        else { statsCount.belum++; filterCounts.belum++; }
+
+        if (b.centroid) {
+          statsCount.withGeo++;
+
+          var statusColor = b.status === 'submitted' ? '#22c55e'
+                          : b.status === 'draft' ? '#eab308'
+                          : '#ef4444';
+
+          var iconHtml = b.foto_with_geo > 0
+            ? '<div style="background:' + statusColor + ';width:20px;height:20px;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:10px;color:white;"><i class="fas fa-check"></i></div>'
+            : '<div style="background:' + statusColor + ';width:16px;height:16px;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>';
+
+          var icon = L.divIcon({
+            html: iconHtml,
+            className: '',
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+          });
+
+          var classes = b.foto_classes || {};
+          var anomalyBadge = classes.anomaly > 0
+            ? '<span style="color:#ef4444;font-weight:600;"> ⚠️ ' + classes.anomaly + ' anomali</span>'
+            : '';
+
+          // Better popup
+          var statusLabel = b.status === 'submitted' ? '✅ Diserahkan'
+                          : b.status === 'draft' ? '🟡 Draft'
+                          : '🔴 Belum';
+
+          var popupContent = '<div style="font-size:.75rem;line-height:1.6;min-width:200px;">' +
+            '<div style="font-weight:600;font-size:.85rem;margin-bottom:4px;color:#0f172a;">' + b.kode + '</div>' +
+            '<div style="color:#475569;margin-bottom:6px;">' + (b.nama || '-') + '</div>' +
+            '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px;">' +
+              '<span style="background:#f1f5f9;padding:1px 6px;border-radius:4px;">' + statusLabel + '</span>' +
+              '<span style="background:#f1f5f9;padding:1px 6px;border-radius:4px;">📸 ' + b.foto_count + ' foto</span>' +
+              (b.foto_with_geo > 0 ? '<span style="background:#f0fdf4;padding:1px 6px;border-radius:4px;color:#16a34a;">📍 ' + b.foto_with_geo + ' GPS</span>' : '') +
+            '</div>' +
+            (anomalyBadge ? '<div style="margin-bottom:4px;">' + anomalyBadge + '</div>' : '') +
+            (b.max_distance_m ? '<div style="color:#64748b;">📏 Radius: ' + b.max_distance_m + 'm</div>' : '') +
+            '<div style="color:#94a3b8;font-size:.65rem;margin-top:2px;">' + b.centroid.lat.toFixed(4) + ', ' + b.centroid.lng.toFixed(4) + '</div>' +
+            '</div>';
+
+          var marker = L.marker([b.centroid.lat, b.centroid.lng], { icon: icon })
+            .bindPopup(popupContent)
+            .addTo(_map);
+          _mapMarkers.push(marker);
+          _mapMarkerData.push({ marker: marker, branch: b, status: s || 'belum' });
+        } else {
+          statsCount.withoutGeo++;
+        }
+      });
+
+      // Apply initial filters
+      applyFilters();
+
+      // Fit bounds
+      if (_mapMarkers.length > 0) {
+        var group = L.featureGroup(_mapMarkers);
+        _map.fitBounds(group.getBounds().pad(0.1));
+      }
+
+      // Update filter counts
+      document.querySelectorAll('.map-filter-pill').forEach(function(pill) {
+        var f = pill.getAttribute('data-filter');
+        var countEl = pill.querySelector('.filter-count');
+        if (countEl && filterCounts[f] !== undefined) countEl.textContent = filterCounts[f];
+      });
+
+      // Update stats bar
+      stats.innerHTML =
+        '<span style="color:#22c55e;">✅ Diserahkan: ' + statsCount.submitted + '</span>' +
+        '<span style="color:#eab308;">🟡 Draft: ' + statsCount.draft + '</span>' +
+        '<span style="color:#ef4444;">🔴 Belum: ' + statsCount.belum + '</span>' +
+        '<span style="color:#a855f7;">📍 GPS: ' + statsCount.withGeo + '</span>' +
+        (statsCount.withoutGeo > 0 ? '<span style="color:#94a3b8;">🌐 Tanpa GPS: ' + statsCount.withoutGeo + '</span>' : '');
+    })
+    .catch(function(err) {
+      info.textContent = '❌ Gagal load: ' + err.message;
+    });
+}
+
+// Legend click → filter
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.legend-item').forEach(function(item) {
+    item.addEventListener('click', function() {
+      var legend = this.getAttribute('data-legend');
+      toggleMapFilter(legend);
+    });
+  });
+
+  // Auto-load ketika tab peta dipilih
+  document.querySelectorAll('.tab-btn[data-tab="peta"]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      setTimeout(function() {
+        loadMapData();
+      }, 300);
+    });
+  });
 });
 </script>
 
