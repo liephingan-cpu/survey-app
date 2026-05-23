@@ -42,6 +42,29 @@ h2 { font-size:1.05rem; color:#1e293b; }
 .thumb-landscape[style*="height:"] { object-fit:cover; }
 .foto-grid img { width:100%;height:70px;object-fit:cover;border-radius:4px; }
 img.auto-orient { max-height:100px;object-fit:contain;background:#f1f5f9;border-radius:4px; }
+
+/* --- Mobile Responsive --- */
+@media (max-width: 600px) {
+  .summary-grid { grid-template-columns:repeat(2,1fr) !important; gap:4px; }
+  .dash-card { padding:8px 4px; }
+  .dash-card .num { font-size:1.1rem; }
+  .dash-card h3 { font-size:.6rem; }
+  .item-table { font-size:.65rem; }
+  .item-table th, .item-table td { padding:4px 3px; font-size:.65rem; }
+  .tab-bar { flex-wrap:wrap; }
+  .tab-btn { flex:1 1 auto; font-size:.7rem; padding:5px; min-width:60px; }
+  .container { padding:6px; }
+  .top-bar { font-size:.78rem; padding:.5rem .6rem; }
+  h2 { font-size:.9rem; }
+  #item-bw-summary > div { min-width:140px; }
+  .foto-grid { grid-template-columns:repeat(3,1fr) !important; }
+}
+
+@media (max-width: 400px) {
+  .summary-grid { grid-template-columns:1fr 1fr !important; }
+  .dash-card { padding:6px 3px; }
+  .item-table th, .item-table td { font-size:.6rem; padding:3px 2px; }
+}
 </style>
 </head>
 <body>
@@ -174,6 +197,9 @@ img.auto-orient { max-height:100px;object-fit:contain;background:#f1f5f9;border-
   <select id="item-filter-wilayah" class="item-filter-select" onchange="loadItemStats()" disabled>
     <option value="">📍 Semua Wilayah</option>
   </select>
+  <!-- Export buttons -->
+  <button onclick="exportExcel()" title="Export Excel" style="padding:3px 10px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:white;border:none;border-radius:8px;font-size:.7rem;cursor:pointer;font-weight:500;">📥 Excel</button>
+  <button onclick="exportPDF()" title="Export PDF" style="padding:3px 10px;background:linear-gradient(135deg,#3b82f6,#2563eb);color:white;border:none;border-radius:8px;font-size:.7rem;cursor:pointer;font-weight:500;">📄 PDF</button>
   <span style="font-size:.68rem;color:#64748b;padding:5px 0;" id="item-stats-label">📊 Analisa Per Item</span>
   <span style="font-size:.6rem;color:#94a3b8;padding:5px 0;" id="item-stats-ts"></span>
   <span id="item-stats-status-info" style="display:none;font-size:.6rem;color:#94a3b8;padding:2px 6px;background:#f8fafc;border-radius:4px;margin-left:4px;">ⓘ</span>
@@ -331,6 +357,21 @@ function loadItemStats() {
     .catch(e => {
       document.getElementById('item-stats-label').textContent = '❌ Gagal: ' + e.message;
     });
+}
+
+// ── Export functions ──
+function exportExcel() {
+  const ac = document.getElementById('item-filter-area').value;
+  const wc = document.getElementById('item-filter-wilayah').value;
+  const url = `/survey/api/kantor-checklist/export-excel?area_code=${encodeURIComponent(ac)}&wilayah_code=${encodeURIComponent(wc)}`;
+  window.open(url, '_blank');
+}
+
+function exportPDF() {
+  const ac = document.getElementById('item-filter-area').value;
+  const wc = document.getElementById('item-filter-wilayah').value;
+  const url = `/survey/api/kantor-checklist/export-pdf?area_code=${encodeURIComponent(ac)}&wilayah_code=${encodeURIComponent(wc)}`;
+  window.open(url, '_blank');
 }
 
 function renderItemStats(d) {

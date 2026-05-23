@@ -1,43 +1,38 @@
-# Byte-compiled
-__pycache__/
-*.py[cod]
+
 *$py.class
-
-# Virtual environment
-venv/
-env/
-.venv/
-
-# Uploads
-uploads/*
-!uploads/.gitkeep
-
-# PDFs
-pdfs/*
-!pdfs/.gitkeep
-
-# Environment
-.env
-
-# OS
-.DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-
-# Debug
-debug_*.html
-*.bak
-*.pyc
-__pycache__/
-static/reports/*_old.png
-*.old_bak
+backup_before_migration_20260518.sql
 backup_*.sql
-submitted_report.png
-ongoing_report.png
+*.bak
+*.bak.*
 belum_dibuat_report.png
+# Byte-compiled
 checklist3.py
 checklist_backup.py
-backup_before_migration_20260518.sql
+checklist.py.bak.export
+# Debug
+debug_*.html
+.DS_Store
+.env
+env/
+# Environment
+# IDE
+.idea/
+*.old_bak
+ongoing_report.png
+# OS
+pdfs/*
+# PDFs
+!pdfs/.gitkeep
+*.pyc
+__pycache__/
+*.py[cod]
+static/reports/*_old.png
+submitted_report.png
+Thumbs.db
+uploads/*
+# Uploads
+!uploads/.gitkeep
+.venv/
+venv/
+# Virtual environment
+.vscode/

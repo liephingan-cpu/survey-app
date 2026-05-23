@@ -24,11 +24,33 @@ _origo_bots_env = Path("/home/bhc0104/origo_bots/.env")
 if _origo_bots_env.exists():
     load_dotenv(_origo_bots_env, override=True)
 
-JWT_SECRET = os.getenv("ORIGO_FLASK_SECRET", "survey-app-default-secret-2026")
+JWT_SECRET = os.getenv("ORIGO_FLASK_SECRET")
+if not JWT_SECRET:
+    # Generate secure random fallback (NOT hardcoded) — tapi idealnya set di .env
+    import secrets
+    JWT_SECRET = secrets.token_hex(32)
+    print("WARNING: ORIGO_FLASK_SECRET not set in .env! Using auto-generated random secret.", flush=True)
 JWT_ALGO = "HS256"
 JWT_EXPIRY_HOURS = 8
 
 router = APIRouter()
+
+
+# ── Simple in-memory rate limiter (no external deps) ──
+import time
+_ratelimit_store: dict[str, list[float]] = {}
+
+def _check_rate_limit(key: str, max_attempts: int = 5, window_seconds: int = 60) -> bool:
+    """Return True if request is allowed, False if rate-limited."""
+    now = time.time()
+    if key not in _ratelimit_store:
+        _ratelimit_store[key] = []
+    # Purge expired entries
+    _ratelimit_store[key] = [t for t in _ratelimit_store[key] if now - t < window_seconds]
+    if len(_ratelimit_store[key]) >= max_attempts:
+        return False
+    _ratelimit_store[key].append(now)
+    return True
 
 
 # ── DB helper ──
@@ -150,6 +172,10 @@ async def api_login(request: Request):
     if not username or not password:
         return JSONResponse({"ok": False, "status": "error", "error": "User ID & password wajib"}, status_code=400)
 
+    # Rate limiting: 5 attempts per 60 detik per username
+    if not _check_rate_limit(f"login:{username}"):
+        return JSONResponse({"ok": False, "error": "Terlalu banyak percobaan login. Coba lagi dalam 60 detik."}, status_code=429)
+
     user = _oracle_login(username, password)
     if not user:
         user = _local_login(username, password)
@@ -163,6 +189,7 @@ async def api_login(request: Request):
         key="session",
         value=token,
         httponly=True,
+        secure=True,
         max_age=JWT_EXPIRY_HOURS * 3600,
         expires=JWT_EXPIRY_HOURS * 3600,
         samesite="lax",

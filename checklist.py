@@ -253,8 +253,11 @@ def get_db():
     )
 
 @router.get("/survey/api/master-data")
-async def master_data(request: Request):
+async def master_data(request: Request, session: Optional[str] = Cookie(None)):
     """Semua data master dalam 1 response - kategori, item, options."""
+    user = get_user_from_cookie(session)
+    if not user:
+        return JSONResponse({"ok": False, "error": "Sesi login diperlukan"}, status_code=401)
     try:
         conn = get_db()
         cur = conn.cursor()
@@ -1617,9 +1620,12 @@ async def dashboard_data_api(request: Request, session: Optional[str] = Cookie(N
                     "status_data": [s.get("status") if isinstance(s, dict) else s for s in sd] if sd else []
                 })
 
+        # Ambil items dari DB untuk filter + mapping
+        dbitems = _get_items_from_db()
+
         # ── Perbandingan antar survei ──
         comparisons = []
-        if len(sessions) >= 2:
+        if dbitems and len(sessions) >= 2:
             prev = sessions[-2]
             latest = sessions[-1]
             pd_prev = prev.get("status_data_raw", [])
@@ -1645,9 +1651,6 @@ async def dashboard_data_api(request: Request, session: Optional[str] = Cookie(N
                 else:
                     trend = "stabil"
                 comparisons.append({"idx": di_idx, "trend": trend, "prev_status": sv_prev if sv_prev != 99 else None, "latest_status": sv_latest if sv_latest != 99 else None})
-
-        # Ambil items dari DB untuk filter + mapping
-        dbitems = _get_items_from_db()
         if not dbitems:
             return JSONResponse({"ok": False, "error": "No items in DB"}, status_code=500)
 
@@ -2679,9 +2682,12 @@ async def api_hapus_foto(request: Request, session: Optional[str] = Cookie(None)
 
 # ── Serve uploads via endpoint (karena mount di sub-router gak bisa) ──
 @router.get("/survey/uploads/{filename:path}")
-async def serve_upload(filename: str):
+async def serve_upload(filename: str, session: Optional[str] = Cookie(None)):
     from fastapi.responses import FileResponse
     import os
+    user = get_user_from_cookie(session)
+    if not user:
+        return HTMLResponse("Unauthorized", status_code=401)
     safe_path = os.path.normpath(os.path.join(PHOTO_DIR, filename))
     if not safe_path.startswith(PHOTO_DIR):
         return HTMLResponse("Forbidden", status_code=403)
@@ -2690,9 +2696,12 @@ async def serve_upload(filename: str):
     return FileResponse(safe_path)
 
 @router.get("/survey/reports/{filename:path}")
-async def serve_report(filename: str):
+async def serve_report(filename: str, session: Optional[str] = Cookie(None)):
     from fastapi.responses import FileResponse
     import os
+    user = get_user_from_cookie(session)
+    if not user:
+        return HTMLResponse("Unauthorized", status_code=401)
     REPORT_DIR = os.path.join(os.path.dirname(__file__), "static", "reports")
     safe_path = os.path.normpath(os.path.join(REPORT_DIR, filename))
     if not safe_path.startswith(REPORT_DIR):
@@ -4069,6 +4078,801 @@ async def serve_pdf_redirect(kantor_code: str):
     return HTMLResponse(f"<script>window.location.href='/survey/api/public/pdf/{kantor_code}?dl=1';</script>")
 
 
+# ────────────────────────────────────────────────────
+# EXPORT FUNCTIONS
+# ────────────────────────────────────────────────────
+
+
+def _export_data(area_code: str, wilayah_code: str) -> dict:
+    """
+    Helper yang reuse logic dari item_stats_api.
+    Return dict dengan data mentah untuk export Excel/PDF.
+    """
+    conn = get_db()
+    cur = conn.cursor()
+
+    # ── Tree: area/wilayah mapping ──
+    cur.execute("""
+        WITH RECURSIVE tree AS (
+            SELECT id, parent_id, node_code, display_name, branch_kind, office_code,
+                   1 AS depth, CAST(node_code AS text) AS path_code
+            FROM origo.network_tree_node
+            WHERE version_id = (SELECT id FROM origo.network_tree_version WHERE is_published = TRUE LIMIT 1)
+              AND parent_id IS NULL
+            UNION ALL
+            SELECT n.id, n.parent_id, n.node_code, n.display_name, n.branch_kind, n.office_code,
+                   t.depth + 1,
+                   t.path_code || '>' || n.node_code
+            FROM origo.network_tree_node n
+            JOIN tree t ON n.parent_id = t.id
+            WHERE n.version_id = (SELECT id FROM origo.network_tree_version WHERE is_published = TRUE LIMIT 1)
+        )
+        SELECT office_code, path_code
+        FROM tree
+        WHERE branch_kind NOT IN ('area','wilayah') AND office_code IS NOT NULL
+    """)
+    branch_area = {}
+    for r in cur.fetchall():
+        oc = r[0]
+        pc = (r[1] or "").split(">")
+        branch_area[oc] = {
+            "area_code": pc[1] if len(pc) >= 2 else "?",
+            "wilayah_code": pc[2] if len(pc) >= 3 else pc[1] if len(pc) >= 2 else "?",
+        }
+
+    # ── Categories ──
+    cur2 = conn.cursor()
+    cur2.execute("SELECT cat_code, cat_name, cat_weight::float FROM origo.survey_categories ORDER BY sort_order")
+    cats_raw = {r[0]: {"name": r[1], "weight": r[2]} for r in cur2.fetchall()}
+    cur2.close()
+
+    # ── Options ──
+    cur2 = conn.cursor()
+    cur2.execute("""
+        SELECT t.type_code, o.opt_value::int, o.weight_mult, o.opt_label, COALESCE(o.is_no, false)
+        FROM origo.survey_question_types t
+        JOIN origo.survey_type_options o ON t.id = o.type_id
+        ORDER BY t.type_code, o.sort_order
+    """)
+    opt_labels = {}
+    for tc, ov, wm, lbl, inh in cur2.fetchall():
+        opt_labels.setdefault(tc, {})[ov] = {"label": lbl, "is_no": inh, "weight_mult": float(wm)}
+    cur2.close()
+
+    # ── Items ──
+    dbitems = _get_items_from_db()
+    if not dbitems:
+        conn.close()
+        return {"ok": False, "error": "No items defined"}
+
+    # ── Group items per kategori ──
+    cat_items = {}
+    for i, di in enumerate(dbitems):
+        cat_items.setdefault(di["cat"], []).append({"idx": i, "weight": di["weight"]})
+
+    # Ambil data checklist
+    cur.execute("""
+        SELECT kantor_code, status_data, yes_count, no_count, total_items,
+               workflow_status, pic, tgl_cek, weighted_score, nomor_survei
+        FROM origo.kantor_checklist_data
+        WHERE status_data IS NOT NULL AND jsonb_array_length(status_data) > 0
+          AND workflow_status IN ('submitted', 'reviewed', 'approved')
+    """)
+
+    ist = {i: {"total": 0, "score_sum": 0.0, "opts": {}} for i in range(len(dbitems))}
+    cat_survey_scores = {cc: [] for cc in cats_raw}
+    total_sessions = 0
+    # Per-kantor detail
+    kantor_detail = []
+
+    for r in cur.fetchall():
+        kc = r[0]
+        # Filter area/wilayah
+        if area_code:
+            ba = branch_area.get(kc, {})
+            if ba.get("area_code") != area_code:
+                continue
+        if wilayah_code:
+            ba = branch_area.get(kc, {})
+            code_ba = ba.get("area_code", "") + ">" + (ba.get("wilayah_code", "") or "")
+            if ba.get("wilayah_code", "") != wilayah_code and code_ba != wilayah_code:
+                continue
+
+        sd = r[1]
+        total_sessions += 1
+
+        if sd:
+            status_data = sd if isinstance(sd, list) else []
+            for idx, s in enumerate(status_data):
+                if idx >= len(dbitems):
+                    break
+                try:
+                    sv = int(s.get("status") if isinstance(s, dict) else s)
+                except (ValueError, AttributeError):
+                    continue
+                tc = dbitems[idx]["type"]
+                wm = opt_labels.get(tc, {}).get(sv, {}).get("weight_mult", 0.0)
+                ist[idx]["total"] += 1
+                ist[idx]["opts"][sv] = ist[idx]["opts"].get(sv, 0) + 1
+                ist[idx]["score_sum"] += wm
+
+            # Per-category score per survey
+            for cc, citems in cat_items.items():
+                cat_sum = 0.0
+                cat_max = 0.0
+                for ci in citems:
+                    idx = ci["idx"]
+                    iw = ci["weight"]
+                    cat_max += iw
+                    if idx < len(status_data):
+                        s = status_data[idx] if isinstance(status_data[idx], dict) else {}
+                        try:
+                            sv = int(s.get("status", -1))
+                        except (ValueError, TypeError):
+                            sv = -1
+                    else:
+                        sv = -1
+                    if sv >= 0:
+                        tc = dbitems[idx]["type"]
+                        actual_wm = opt_labels.get(tc, {}).get(sv, {}).get("weight_mult", 0.0)
+                        cat_sum += iw * actual_wm
+                cat_pct = round(cat_sum / cat_max * 100, 1) if cat_max > 0 else 0
+                cat_survey_scores[cc].append(cat_pct)
+
+        # Kantor detail
+        ws_raw = r[8]  # weighted_score
+        ws_val = float(ws_raw) if ws_raw is not None else 0.0
+        kd = {
+            "kantor_code": kc,
+            "pic": str(r[6] or ""),
+            "tgl_cek": str(r[7])[:10] if r[7] else "",
+            "score": ws_val,
+            "nomor_survei": str(r[9] or ""),
+            "status": r[5] or "",
+        }
+        # Cat scores per survey
+        cat_pct = {}
+        if sd:
+            status_data = sd if isinstance(sd, list) else []
+            for cc, citems in cat_items.items():
+                cat_sum = 0.0
+                cat_max = 0.0
+                for ci in citems:
+                    idx = ci["idx"]
+                    iw = ci["weight"]
+                    cat_max += iw
+                    if idx < len(status_data):
+                        s = status_data[idx] if isinstance(status_data[idx], dict) else {}
+                        try:
+                            sv = int(s.get("status", -1))
+                        except:
+                            sv = -1
+                    else:
+                        sv = -1
+                    if sv >= 0:
+                        tc = dbitems[idx]["type"]
+                        actual_wm = opt_labels.get(tc, {}).get(sv, {}).get("weight_mult", 0.0)
+                        cat_sum += iw * actual_wm
+                cat_pct[cc] = round(cat_sum / cat_max * 100, 1) if cat_max > 0 else 0
+        kd["cat_pct"] = cat_pct
+        kantor_detail.append(kd)
+
+    cur.close()
+    conn.close()
+
+    # ── Build items response ──
+    items = []
+    for i in range(len(dbitems)):
+        s = ist[i]
+        item_score = round(s["score_sum"] / s["total"] * 100, 1) if s["total"] > 0 else 0
+        item_opts = []
+        tc = dbitems[i]["type"]
+        for ov in sorted(s["opts"].keys()):
+            ol = opt_labels.get(tc, {}).get(ov, {})
+            item_opts.append({
+                "val": ov, "count": s["opts"][ov],
+                "label": ol.get("label", f"Nilai {ov}"),
+                "is_no": ol.get("is_no", False),
+            })
+        items.append({
+            "idx": i, "cat": dbitems[i]["cat"],
+            "label": dbitems[i]["label"],
+            "weight": dbitems[i]["weight"],
+            "avg_score": item_score,
+            "opts": item_opts,
+            "total_dinilai": s["total"],
+        })
+
+    # ── Category summary ──
+    cat_summary = {}
+    overall_wsum = 0.0
+    overall_wscores = 0.0
+    sorted_cats = sorted(cat_items.keys())
+    for cc in sorted_cats:
+        scores = cat_survey_scores.get(cc, [])
+        cat_avg = round(sum(scores) / len(scores), 1) if scores else 0
+        cw = cats_raw.get(cc, {}).get("weight", 10)
+        cat_summary[cc] = {
+            "code": cc,
+            "name": cats_raw.get(cc, {}).get("name", cc),
+            "weight": cw,
+            "avg_score": cat_avg,
+            "count": len(scores),
+        }
+        overall_wsum += cw
+        overall_wscores += cat_avg * cw
+    overall_cat_scored = round(overall_wscores / overall_wsum, 1) if overall_wsum > 0 else 0
+
+    # ── Zoning ──
+    merah = sum(1 for x in items if x["avg_score"] < 60)
+    kuning = sum(1 for x in items if 60 <= x["avg_score"] < 80)
+    hijau = sum(1 for x in items if x["avg_score"] >= 80)
+    rata_all = round(sum(x["avg_score"] for x in items) / len(items), 1) if items else 0
+
+    items_sorted = sorted(items, key=lambda x: x["avg_score"])
+    best_items = [x for x in items_sorted if x["avg_score"] >= 80][-5:] if items_sorted else []
+    best_items.reverse()
+    worst_items = [x for x in items_sorted if x["avg_score"] < 60][:5] if items_sorted else []
+    if len(worst_items) < 5:
+        worst_items = [x for x in items_sorted if x["avg_score"] < 80][:5]
+
+    # Filter label
+    if area_code or wilayah_code:
+        area_name = area_code
+        for oc, ba in branch_area.items():
+            if ba.get("area_code") == area_code:
+                area_name = area_code
+                break
+        filter_label = f"AREA {area_code}" if area_code else ""
+        if wilayah_code:
+            filter_label += f" - Wilayah {wilayah_code}"
+    else:
+        filter_label = "Nasional"
+
+    # ── Branch area mapping for detail ──
+    # Get branch names
+    conn2 = get_db()
+    cur2 = conn2.cursor()
+    cur2.execute("""
+        SELECT office_code, display_name FROM origo.network_tree_node
+        WHERE office_code IS NOT NULL AND display_name IS NOT NULL
+    """)
+    branch_names = {r[0]: r[1] for r in cur2.fetchall()}
+    cur2.close()
+    conn2.close()
+
+    for kd in kantor_detail:
+        ba = branch_area.get(kd["kantor_code"], {})
+        kd["area_code"] = ba.get("area_code", "")
+        kd["wilayah_code"] = ba.get("wilayah_code", "")
+        kd["kantor_name"] = branch_names.get(kd["kantor_code"], kd["kantor_code"])
+
+    return {
+        "ok": True,
+        "filter_label": filter_label,
+        "items": items,
+        "merah": merah,
+        "kuning": kuning,
+        "hijau": hijau,
+        "rata_all": rata_all,
+        "best_items": best_items,
+        "worst_items": worst_items,
+        "total_sessions": total_sessions,
+        "cat_summary": cat_summary,
+        "overall_cat_scored": overall_cat_scored,
+        "kantor_detail": kantor_detail,
+        "dbitems": dbitems,
+    }
+
+
+@router.get("/survey/api/kantor-checklist/export-excel")
+async def export_excel(
+    request: Request,
+    session: Optional[str] = Cookie(None),
+    area_code: str = Query(""),
+    wilayah_code: str = Query(""),
+):
+    """
+    Export data item-stats + per-kantor ke Excel (.xlsx).
+    3 sheet: Summary, Per Item, Per Kantor.
+    """
+    user = get_user_from_cookie(session)
+    if not user:
+        return HTMLResponse(status_code=302, headers={"Location": "/login"})
+
+    ed = _export_data(area_code, wilayah_code)
+    if not ed.get("ok"):
+        return JSONResponse({"ok": False, "error": ed.get("error", "Tidak ada data")}, status_code=400)
+    if not ed["items"] or ed["total_sessions"] == 0:
+        return JSONResponse({"ok": False, "error": "Tidak ada data"}, status_code=400)
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    wb = Workbook()
+
+    # ── Styles ──
+    header_fill = PatternFill(start_color="1e293b", end_color="1e293b", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True, size=10)
+    subheader_fill = PatternFill(start_color="f1f5f9", end_color="f1f5f9", fill_type="solid")
+    subheader_font = Font(bold=True, size=10)
+    thin_border = Border(
+        left=Side(style="thin"),
+        right=Side(style="thin"),
+        top=Side(style="thin"),
+        bottom=Side(style="thin"),
+    )
+    green_font = Font(color="166534", bold=True)
+    yellow_font = Font(color="854d0e", bold=True)
+    red_font = Font(color="991b1b", bold=True)
+    title_font = Font(bold=True, size=13)
+    info_font = Font(size=10)
+    center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    now_wib = datetime.now(ZoneInfo("Asia/Jakarta"))
+    date_str = now_wib.strftime("%d-%m-%Y %H:%M WIB")
+    file_date = now_wib.strftime("%Y%m%d")
+    filter_label = ed["filter_label"]
+
+    # ════════════════════════════════════════════
+    # SHEET 1: SUMMARY
+    # ════════════════════════════════════════════
+    ws1 = wb.active
+    ws1.title = "Summary"
+    ws1.sheet_properties.tabColor = "6366f1"
+
+    # Title
+    ws1.merge_cells("A1:E1")
+    ws1["A1"] = "Laporan Survey Kondisi Kantor"
+    ws1["A1"].font = title_font
+    ws1["A1"].alignment = Alignment(horizontal="center")
+
+    ws1.merge_cells("A2:E2")
+    ws1["A2"] = f"Filter: {filter_label} | Dicetak: {date_str}"
+    ws1["A2"].font = info_font
+    ws1["A2"].alignment = Alignment(horizontal="center")
+
+    # Summary stats
+    row = 4
+    ws1["A4"] = "Total Survey"
+    ws1["B4"] = ed["total_sessions"]
+    ws1["A4"].font = Font(bold=True, size=10)
+    ws1["C4"] = "Rata-rata Skor"
+    ws1["D4"] = f"{ed['rata_all']}%"
+    ws1["D4"].font = Font(bold=True, size=12)
+
+    row = 5
+    ws1["A5"] = "Zona Merah"
+    ws1["B5"] = ed["merah"]
+    ws1["B5"].font = red_font
+    ws1["C5"] = "Zona Kuning"
+    ws1["D5"] = ed["kuning"]
+    ws1["D5"].font = yellow_font
+    ws1["E5"] = "Zona Hijau"
+    ws1["F5"] = ed["hijau"]
+    ws1["F5"].font = green_font
+
+    # Category table
+    row = 7
+    ws1[f"A{row}"] = "Kategori"
+    ws1[f"B{row}"] = "Bobot"
+    ws1[f"C{row}"] = "Rata-rata"
+    ws1[f"D{row}"] = "Jumlah Survey"
+    for c in "ABCD":
+        cell = ws1[f"{c}{row}"]
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = center_align
+        cell.border = thin_border
+
+    for idx, (cc, cs) in enumerate(sorted(ed["cat_summary"].items())):
+        r = 8 + idx
+        ws1[f"A{r}"] = f"[{cc}] {cs['name']}"
+        ws1[f"B{r}"] = f"{cs['weight']}%"
+        ws1[f"C{r}"] = f"{cs['avg_score']}%"
+        if cs['avg_score'] >= 80:
+            ws1[f"C{r}"].font = green_font
+        elif cs['avg_score'] >= 60:
+            ws1[f"C{r}"].font = yellow_font
+        else:
+            ws1[f"C{r}"].font = red_font
+        ws1[f"D{r}"] = cs["count"]
+        for c in "ABCD":
+            ws1[f"{c}{r}"].border = thin_border
+            ws1[f"{c}{r}"].alignment = center_align
+
+    row = 8 + len(ed["cat_summary"])
+    ws1[f"A{row}"] = "Skor Tertimbang per Bobot Kategori"
+    ws1[f"A{row}"].font = Font(bold=True, size=10)
+    ws1[f"B{row}"] = f"{ed['overall_cat_scored']}%"
+    ws1[f"B{row}"].font = Font(bold=True, size=14, color="6366f1")
+
+    # Best / Worst items
+    row += 2
+    ws1[f"A{row}"] = "🏆 Item Terbaik"
+    ws1[f"A{row}"].font = Font(bold=True, size=10, color="166534")
+    ws1[f"B{row}"] = "Skor"
+    ws1[f"B{row}"].font = Font(bold=True, size=10, color="166534")
+    row += 1
+    for bi in ed["best_items"]:
+        ws1[f"A{row}"] = f"{bi['cat']} - {bi['label']}"
+        ws1[f"B{row}"] = f"{bi['avg_score']}%"
+        ws1[f"B{row}"].font = green_font
+        row += 1
+
+    row += 1
+    ws1[f"A{row}"] = "🔻 Item Terburuk"
+    ws1[f"A{row}"].font = Font(bold=True, size=10, color="991b1b")
+    ws1[f"B{row}"] = "Skor"
+    ws1[f"B{row}"].font = Font(bold=True, size=10, color="991b1b")
+    row += 1
+    for wi in ed["worst_items"]:
+        ws1[f"A{row}"] = f"{wi['cat']} - {wi['label']}"
+        ws1[f"B{row}"] = f"{wi['avg_score']}%"
+        ws1[f"B{row}"].font = red_font
+        row += 1
+
+    # Column widths
+    ws1.column_dimensions["A"].width = 40
+    ws1.column_dimensions["B"].width = 15
+    ws1.column_dimensions["C"].width = 18
+    ws1.column_dimensions["D"].width = 18
+    ws1.column_dimensions["E"].width = 15
+    ws1.column_dimensions["F"].width = 15
+
+    # ════════════════════════════════════════════
+    # SHEET 2: PER ITEM
+    # ════════════════════════════════════════════
+    ws2 = wb.create_sheet("Per Item")
+    ws2.sheet_properties.tabColor = "7c3aed"
+
+    headers = ["No", "Kode", "Item", "Kategori", "Bobot (%)", "Rata-rata (%)", "Hijau", "Kuning", "Merah", "Jml Dinilai"]
+    for ci, h in enumerate(headers, 1):
+        cell = ws2.cell(row=1, column=ci, value=h)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = center_align
+        cell.border = thin_border
+
+    # Group items by category (A1, A2, ... B1, B2, ...)
+    cat_counter = {}
+    for ri, it in enumerate(ed["items"], 2):
+        cat_counter[it["cat"]] = cat_counter.get(it["cat"], 0) + 1
+        item_num = cat_counter[it["cat"]]
+        kode = f"{it['cat']}{item_num}"
+
+        # Distribute opts into Hijau/Kuning/Merah
+        count_hijau = sum(o["count"] for o in it["opts"] if not o["is_no"] and o["val"] <= 0)
+        count_kuning = sum(o["count"] for o in it["opts"] if o["val"] == 1)
+        count_merah = sum(o["count"] for o in it["opts"] if o["is_no"] or o["val"] >= 2)
+
+        ws2.cell(row=ri, column=1, value=ri-1).alignment = center_align
+        ws2.cell(row=ri, column=2, value=kode).alignment = center_align
+        ws2.cell(row=ri, column=3, value=it["label"])
+        ws2.cell(row=ri, column=4, value=it["cat"]).alignment = center_align
+        ws2.cell(row=ri, column=5, value=round(it["weight"] * 100, 1)).alignment = center_align
+
+        sc_cell = ws2.cell(row=ri, column=6, value=it["avg_score"])
+        sc_cell.alignment = center_align
+        sc_cell.number_format = "0.0"
+        if it["avg_score"] >= 80:
+            sc_cell.font = green_font
+        elif it["avg_score"] >= 60:
+            sc_cell.font = yellow_font
+        else:
+            sc_cell.font = red_font
+
+        ws2.cell(row=ri, column=7, value=count_hijau).alignment = center_align
+        ws2.cell(row=ri, column=7).font = green_font
+        ws2.cell(row=ri, column=8, value=count_kuning).alignment = center_align
+        ws2.cell(row=ri, column=8).font = yellow_font
+        ws2.cell(row=ri, column=9, value=count_merah).alignment = center_align
+        ws2.cell(row=ri, column=9).font = red_font
+        ws2.cell(row=ri, column=10, value=it["total_dinilai"]).alignment = center_align
+
+        for ci in range(1, 11):
+            ws2.cell(row=ri, column=ci).border = thin_border
+
+    # Column widths
+    ws2.column_dimensions["A"].width = 5
+    ws2.column_dimensions["B"].width = 7
+    ws2.column_dimensions["C"].width = 50
+    ws2.column_dimensions["D"].width = 10
+    ws2.column_dimensions["E"].width = 12
+    ws2.column_dimensions["F"].width = 14
+    ws2.column_dimensions["G"].width = 10
+    ws2.column_dimensions["H"].width = 10
+    ws2.column_dimensions["I"].width = 10
+    ws2.column_dimensions["J"].width = 14
+
+    # ════════════════════════════════════════════
+    # SHEET 3: PER KANTOR
+    # ════════════════════════════════════════════
+    ws3 = wb.create_sheet("Per Kantor")
+    ws3.sheet_properties.tabColor = "2563eb"
+
+    cat_cols = sorted(ed["cat_summary"].keys())
+    kd_headers = ["No", "Kantor", "Area", "Wilayah", "PIC", "Tanggal Cek", "Skor Total"]
+    for cc in cat_cols:
+        kd_headers.append(f"{cc}%")
+
+    for ci, h in enumerate(kd_headers, 1):
+        cell = ws3.cell(row=1, column=ci, value=h)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = center_align
+        cell.border = thin_border
+
+    for ri, kd in enumerate(ed["kantor_detail"], 2):
+        ws3.cell(row=ri, column=1, value=ri-1).alignment = center_align
+        ws3.cell(row=ri, column=2, value=kd["kantor_name"])
+        ws3.cell(row=ri, column=3, value=kd.get("area_code", "")).alignment = center_align
+        ws3.cell(row=ri, column=4, value=kd.get("wilayah_code", "")).alignment = center_align
+        ws3.cell(row=ri, column=5, value=kd["pic"]).alignment = center_align
+        ws3.cell(row=ri, column=6, value=kd["tgl_cek"]).alignment = center_align
+        sc = ws3.cell(row=ri, column=7, value=round(kd["score"]))
+        sc.alignment = center_align
+        if kd["score"] >= 80:
+            sc.font = green_font
+        elif kd["score"] >= 60:
+            sc.font = yellow_font
+        else:
+            sc.font = red_font
+
+        for ci, cc in enumerate(cat_cols, 8):
+            pct = kd.get("cat_pct", {}).get(cc, 0)
+            cell = ws3.cell(row=ri, column=ci, value=round(pct))
+            cell.alignment = center_align
+            if pct >= 80:
+                cell.font = Font(color="166534", bold=True)
+            elif pct >= 60:
+                cell.font = Font(color="854d0e", bold=True)
+            else:
+                cell.font = Font(color="991b1b", bold=True)
+
+        for ci in range(1, len(kd_headers) + 1):
+            ws3.cell(row=ri, column=ci).border = thin_border
+
+    # Column widths
+    ws3.column_dimensions["A"].width = 5
+    ws3.column_dimensions["B"].width = 30
+    ws3.column_dimensions["C"].width = 8
+    ws3.column_dimensions["D"].width = 10
+    ws3.column_dimensions["E"].width = 12
+    ws3.column_dimensions["F"].width = 14
+    ws3.column_dimensions["G"].width = 12
+    for ci in range(8, len(kd_headers) + 1):
+        ws3.column_dimensions[get_column_letter(ci)].width = 8
+
+    # ── Output ──
+    safe_label = filter_label.replace(" ", "_").replace("-", "_")
+    filename = f"SurveyReport_{safe_label}_{file_date}.xlsx"
+
+    from io import BytesIO
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/survey/api/kantor-checklist/export-pdf")
+async def export_pdf(
+    request: Request,
+    session: Optional[str] = Cookie(None),
+    area_code: str = Query(""),
+    wilayah_code: str = Query(""),
+):
+    """
+    Export PDF laporan per-item via WeasyPrint (HTML → PDF, landscape A4).
+    """
+    user = get_user_from_cookie(session)
+    if not user:
+        return HTMLResponse(status_code=302, headers={"Location": "/login"})
+
+    ed = _export_data(area_code, wilayah_code)
+    if not ed.get("ok"):
+        return JSONResponse({"ok": False, "error": ed.get("error", "Tidak ada data")}, status_code=400)
+    if not ed["items"] or ed["total_sessions"] == 0:
+        return JSONResponse({"ok": False, "error": "Tidak ada data"}, status_code=400)
+
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    now_wib = datetime.now(ZoneInfo("Asia/Jakarta"))
+    date_str = now_wib.strftime("%d-%m-%Y %H:%M WIB")
+    filter_label = ed["filter_label"]
+
+    # Build inline HTML
+    html_parts = []
+
+    # ── CSS ──
+    html_parts.append(f"""\
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<style>
+@page {{
+  size: A4 landscape;
+  margin: 12mm 10mm;
+  @bottom-center {{
+    content: "Halaman " counter(page) " dari " counter(pages);
+    font-size: 8pt;
+    color: #888;
+  }}
+}}
+body {{
+  font-family: "DejaVu Sans", sans-serif;
+  font-size: 7.5pt;
+  color: #1e293b;
+  margin: 0;
+  padding: 0;
+}}
+h1 {{
+  font-size: 13pt;
+  color: #1e293b;
+  margin-bottom: 2px;
+}}
+h2 {{
+  font-size: 10pt;
+  color: #475569;
+  margin-top: 0;
+}}
+.summary-box {{
+  background: linear-gradient(135deg, #eef2ff, #e0e7ff);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}}
+.summary-box .big-number {{
+  font-size: 20pt;
+  font-weight: bold;
+}}
+.summary-box .green {{ color: #166534; }}
+.summary-box .yellow {{ color: #854d0e; }}
+.summary-box .red {{ color: #991b1b; }}
+table {{
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 10px;
+}}
+th {{
+  background: #1e293b;
+  color: white;
+  padding: 4px 6px;
+  font-size: 7pt;
+  text-align: center;
+  font-weight: bold;
+}}
+td {{
+  padding: 3px 5px;
+  border: 0.5pt solid #cbd5e1;
+  font-size: 7pt;
+}}
+tr:nth-child(even) {{ background: #f8fafc; }}
+.score-green {{ color: #166534; font-weight: bold; }}
+.score-yellow {{ color: #854d0e; font-weight: bold; }}
+.score-red {{ color: #991b1b; font-weight: bold; }}
+.footer {{ font-size: 6.5pt; color: #888; text-align: center; margin-top: 8px; }}
+.dot {{
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 3px;
+}}
+.legend {{ font-size: 7pt; margin-bottom: 6px; }}
+.page-break {{ page-break-before: always; }}
+</style>
+</head>
+<body>
+""")
+
+    # ── Header ──
+    html_parts.append(f"<h1>Laporan Survey Kondisi Kantor</h1>")
+    html_parts.append(f"<h2>Filter: {filter_label} | Dicetak: {date_str}</h2>")
+
+    # ── Summary box ──
+    score = ed["overall_cat_scored"]
+    score_class = "green" if score >= 80 else ("yellow" if score >= 60 else "red")
+    zona = "Hijau ✅" if score >= 80 else ("Kuning ⚠️" if score >= 60 else "Merah 🔴")
+    trend = "📈" if ed['rata_all'] >= 80 else ("➡️" if ed['rata_all'] >= 60 else "📉")
+
+    html_parts.append(f'''\
+<div class="summary-box">
+  <div>
+    <strong>Total Survey:</strong> {ed["total_sessions"]}<br>
+    <strong>Rata-rata Skor:</strong> {ed["rata_all"]}%
+  </div>
+  <div style="text-align:center">
+    <span class="big-number {score_class}">{score}%</span><br>
+    <span>Skor Tertimbang</span>
+  </div>
+  <div style="text-align:right">
+    <strong>Zona:</strong> {zona}<br>
+    <strong>Trend:</strong> {trend}
+  </div>
+</div>
+''')
+
+    # ── Legend ──
+    html_parts.append(f'''\
+<div class="legend">
+  <span class="dot" style="background:#166534"></span> Hijau (≥80) {ed["hijau"]} item
+  <span class="dot" style="background:#ca8a04;margin-left:12px"></span> Kuning (60-79) {ed["kuning"]} item
+  <span class="dot" style="background:#991b1b;margin-left:12px"></span> Merah ({ed['merah']} item
+</div>
+''')
+
+    # ── Category table ──
+    html_parts.append("<table><thead><tr><th>Kategori</th><th>Bobot</th><th>Rata-rata</th><th>Jml</th></tr></thead><tbody>")
+    for cc, cs in sorted(ed["cat_summary"].items()):
+        css = "score-green" if cs["avg_score"] >= 80 else ("score-yellow" if cs["avg_score"] >= 60 else "score-red")
+        html_parts.append(f"<tr><td>[{cc}] {cs['name']}</td><td style='text-align:center'>{cs['weight']}%</td><td class='{css}' style='text-align:center'>{cs['avg_score']}%</td><td style='text-align:center'>{cs['count']}</td></tr>")
+    html_parts.append("</tbody></table>")
+
+    # ── Per-item table ──
+    html_parts.append("<div class='page-break'></div>")
+    html_parts.append(f"<h1>Detail Item Pemeriksaan</h1>")
+    html_parts.append("<table><thead><tr><th style='width:20px'>No</th><th style='width:25px'>Kode</th><th>Item</th><th style='width:35px'>Bobot</th><th style='width:45px'>Rata-rata</th><th style='width:30px'>Hijau</th><th style='width:30px'>Kuning</th><th style='width:30px'>Merah</th><th style='width:40px'>Jml</th></tr></thead><tbody>")
+
+    cat_counter = {}
+    for it in ed["items"]:
+        cat_counter[it["cat"]] = cat_counter.get(it["cat"], 0) + 1
+        item_num = cat_counter[it["cat"]]
+        kode = f"{it['cat']}{item_num}"
+
+        count_hijau = sum(o["count"] for o in it["opts"] if not o["is_no"] and o["val"] <= 0)
+        count_kuning = sum(o["count"] for o in it["opts"] if o["val"] == 1)
+        count_merah = sum(o["count"] for o in it["opts"] if o["is_no"] or o["val"] >= 2)
+
+        css = "score-green" if it["avg_score"] >= 80 else ("score-yellow" if it["avg_score"] >= 60 else "score-red")
+        html_parts.append(f'''\
+<tr>
+  <td style='text-align:center'>{it['idx']+1}</td>
+  <td style='text-align:center'>{kode}</td>
+  <td>{it['label']}</td>
+  <td style='text-align:center'>{round(it['weight']*100,1)}%</td>
+  <td class='{css}' style='text-align:center'>{it['avg_score']}%</td>
+  <td style='text-align:center;color:#166534'>{count_hijau}</td>
+  <td style='text-align:center;color:#854d0e'>{count_kuning}</td>
+  <td style='text-align:center;color:#991b1b'>{count_merah}</td>
+  <td style='text-align:center'>{it['total_dinilai']}</td>
+</tr>''')
+    html_parts.append("</tbody></table>")
+
+    html_parts.append(f"<div class='footer'>Dicetak: {date_str} | Origo Survey System | Filter: {filter_label}</div>")
+    html_parts.append("</body></html>")
+
+    html = "".join(html_parts)
+
+    # ── Generate PDF ──
+    from weasyprint import HTML as WPHTML
+    pdf_buf = WPHTML(string=html).write_pdf()
+
+    safe_label = filter_label.replace(" ", "_").replace("-", "_")
+    filename = f"SurveyReport_{safe_label}_{now_wib.strftime('%Y%m%d')}.pdf"
+
+    from fastapi.responses import Response
+    return Response(
+        content=pdf_buf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/survey/api/kantor-checklist/item-evidence")
 async def item_evidence_api(request: Request):
     """
@@ -4096,10 +4900,13 @@ async def item_evidence_api(request: Request):
         return JSONResponse({"ok": False, "error": "item_idx dan opt_status harus integer"}, status_code=400)
     
     import psycopg2
+    pg_pass = os.getenv("PG_PASS")
+    if not pg_pass:
+        return JSONResponse({"ok": False, "error": "Database password not configured"}, status_code=500)
     conn = psycopg2.connect(
         dbname=os.getenv("PG_DB", "db_gabungan"),
         user=os.getenv("PG_USER", "postgres"),
-        password=os.getenv("PG_PASS", "postgres"),
+        password=pg_pass,
         host=os.getenv("PG_HOST", "localhost"),
         port=int(os.getenv("PG_PORT", "5432"))
     )
